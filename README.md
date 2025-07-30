@@ -30,7 +30,7 @@ A comprehensive multi-objective Bayesian optimization framework with advanced vi
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/pymbo.git
+git clone https://github.com/jakub-jagielski/pymbo.git
 cd pymbo
 ```
 
@@ -103,7 +103,7 @@ Please see the `LICENSE` file for full details.
 
 If you use PyMBO in your research, please cite it as follows:
 
-> Jagielski Jakub, J.J.. (2025). *PyMBO: A Python library for multivariate Bayesian optimization and stochastic Bayesian screening*. Version 3.0. Retrieved from https://github.com/jakub-jagielski/pymbo
+> Jakub Jagielski. (2025). *PyMBO: A Python library for multivariate Bayesian optimization and stochastic Bayesian screening*. Version 3.1.2. Retrieved from https://github.com/jakub-jagielski/pymbo
 
 ## Contributing
 

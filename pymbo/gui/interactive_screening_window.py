@@ -75,6 +75,22 @@ class InteractiveScreeningWindow:
         self.plot_circles = []  # Store scatter plot objects for color updates
         self.current_contours = []  # Store current contour objects for cleanup
         
+        # Response trends plot components
+        self.trends_figure = None
+        self.trends_canvas = None
+        self.trends_ax = None
+        self.response_history = {name: [] for name in self.response_names}  # Store response values over time
+        
+        # Parameter importance plot components
+        self.importance_figure = None
+        self.importance_canvas = None
+        self.importance_ax = None
+        
+        # Correlation matrix plot components
+        self.correlation_figure = None
+        self.correlation_canvas = None
+        self.correlation_ax = None
+        
         # Create the window
         self._create_window()
         
@@ -175,8 +191,29 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
         plot_frame = ttk.LabelFrame(scrollable_frame, text="Screening Progress Visualization", padding="10")
         plot_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
         
-        # Create matplotlib figure and canvas
-        self._create_plot(plot_frame)
+        # Create notebook for multiple plots
+        plot_notebook = ttk.Notebook(plot_frame)
+        plot_notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Parameter space exploration tab
+        param_space_frame = ttk.Frame(plot_notebook)
+        plot_notebook.add(param_space_frame, text="Parameter Space")
+        self._create_plot(param_space_frame)
+        
+        # Response trends tab
+        trends_frame = ttk.Frame(plot_notebook)
+        plot_notebook.add(trends_frame, text="Response Trends")
+        self._create_trends_plot(trends_frame)
+        
+        # Parameter importance tab
+        importance_frame = ttk.Frame(plot_notebook)
+        plot_notebook.add(importance_frame, text="Parameter Importance")
+        self._create_importance_plot(importance_frame)
+        
+        # Correlation matrix tab
+        correlation_frame = ttk.Frame(plot_notebook)
+        plot_notebook.add(correlation_frame, text="Correlation Matrix")
+        self._create_correlation_plot(correlation_frame)
         
         # Progress and history section
         progress_frame = ttk.LabelFrame(scrollable_frame, text="Progress & History", padding="10")
@@ -296,6 +333,437 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             # Default bounds on error
             self.plot_ax.set_xlim(0, 100)
             self.plot_ax.set_ylim(0, 100)
+    
+    def _create_trends_plot(self, parent_frame):
+        """Create the response trends over time plot."""
+        try:
+            # Create matplotlib figure
+            self.trends_figure = Figure(figsize=(8, 6), dpi=80)
+            self.trends_ax = self.trends_figure.add_subplot(111)
+            
+            # Set up the plot
+            self.trends_ax.set_title("Response Trends Over Time", fontsize=12, fontweight='bold')
+            self.trends_ax.set_xlabel("Experiment Number", fontsize=10)
+            self.trends_ax.set_ylabel("Response Values", fontsize=10)
+            
+            # Enable grid
+            self.trends_ax.grid(True, alpha=0.3)
+            
+            # Create canvas and add to frame
+            self.trends_canvas = FigureCanvasTkAgg(self.trends_figure, parent_frame)
+            self.trends_canvas.draw()
+            self.trends_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+            # Add instructions
+            instructions_label = ttk.Label(parent_frame, 
+                                         text="• Lines show response value trends • Targets/goals shown as dashed lines",
+                                         font=("Arial", 9), foreground="gray")
+            instructions_label.pack(pady=(5, 0))
+            
+            logger.info("Response trends plot created successfully")
+            
+        except Exception as e:
+            logger.error(f"Error creating trends plot: {e}")
+            # Create fallback label if plot fails
+            ttk.Label(parent_frame, text="Trends plot visualization unavailable", 
+                     font=("Arial", 10), foreground="red").pack(pady=20)
+    
+    def _update_trends_plot(self):
+        """Update the response trends plot with new data."""
+        try:
+            if not self.trends_ax or not self.trends_canvas:
+                logger.debug("No trends plot axis or canvas available")
+                return
+            
+            if len(self.screening_optimizer.experimental_data) == 0:
+                logger.debug("No experimental data available for trends plot")
+                return
+            
+            # Clear the plot
+            self.trends_ax.clear()
+            
+            # Reset plot settings
+            self.trends_ax.set_title("Response Trends Over Time", fontsize=12, fontweight='bold')
+            self.trends_ax.set_xlabel("Experiment Number", fontsize=10)
+            self.trends_ax.set_ylabel("Response Values", fontsize=10)
+            self.trends_ax.grid(True, alpha=0.3)
+            
+            # Get experimental data
+            data = self.screening_optimizer.experimental_data
+            experiment_numbers = list(range(1, len(data) + 1))
+            
+            # Plot trends for each response
+            colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray']
+            
+            for i, response_name in enumerate(self.response_names):
+                if response_name not in data.columns:
+                    continue
+                
+                response_values = data[response_name].values
+                color = colors[i % len(colors)]
+                
+                # Plot the trend line
+                self.trends_ax.plot(experiment_numbers, response_values, 
+                                  color=color, marker='o', markersize=6, 
+                                  linewidth=2, label=response_name, alpha=0.8)
+                
+                # Add target/goal line if specified
+                response_config = self.responses_config.get(response_name, {})
+                goal = response_config.get("goal", "None")
+                
+                if goal == "Target" and "target" in response_config:
+                    target_value = response_config["target"]
+                    self.trends_ax.axhline(y=target_value, color=color, linestyle='--', 
+                                         alpha=0.5, label=f'{response_name} Target')
+                
+                # Highlight best value so far
+                if goal == "Maximize":
+                    best_idx = np.argmax(response_values)
+                    best_value = response_values[best_idx]
+                elif goal == "Minimize":
+                    best_idx = np.argmin(response_values)
+                    best_value = response_values[best_idx]
+                elif goal == "Target":
+                    target_value = response_config.get("target", np.mean(response_values))
+                    deviations = np.abs(response_values - target_value)
+                    best_idx = np.argmin(deviations)
+                    best_value = response_values[best_idx]
+                else:
+                    best_idx = len(response_values) - 1  # Latest value
+                    best_value = response_values[best_idx]
+                
+                # Mark best point with a star
+                self.trends_ax.scatter(experiment_numbers[best_idx], best_value, 
+                                     marker='*', s=200, color=color, 
+                                     edgecolors='black', linewidth=1, zorder=5)
+            
+            # Add legend
+            if len(self.response_names) > 0:
+                self.trends_ax.legend(loc='best', fontsize=9)
+            
+            # Set axis limits with some padding
+            if len(experiment_numbers) > 0:
+                self.trends_ax.set_xlim(0.5, max(experiment_numbers) + 0.5)
+            
+            # Add convergence indicators if available
+            if hasattr(self, 'is_converged') and self.is_converged:
+                # Add vertical line at convergence point
+                convergence_point = len(experiment_numbers)
+                self.trends_ax.axvline(x=convergence_point, color='red', linestyle=':', 
+                                     alpha=0.7, label='Converged')
+                self.trends_ax.legend(loc='best', fontsize=9)
+            
+            # Refresh the plot
+            self.trends_canvas.draw()
+            
+            logger.debug(f"Updated trends plot with {len(experiment_numbers)} data points")
+            
+        except Exception as e:
+            logger.error(f"Error updating trends plot: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _create_importance_plot(self, parent_frame):
+        """Create the parameter importance bar chart plot."""
+        try:
+            # Create matplotlib figure
+            self.importance_figure = Figure(figsize=(8, 6), dpi=80)
+            self.importance_ax = self.importance_figure.add_subplot(111)
+            
+            # Set up the plot
+            self.importance_ax.set_title("Parameter Importance Analysis", fontsize=12, fontweight='bold')
+            self.importance_ax.set_xlabel("Importance Score", fontsize=10)
+            self.importance_ax.set_ylabel("Parameters", fontsize=10)
+            
+            # Enable grid
+            self.importance_ax.grid(True, alpha=0.3, axis='x')
+            
+            # Create canvas and add to frame
+            self.importance_canvas = FigureCanvasTkAgg(self.importance_figure, parent_frame)
+            self.importance_canvas.draw()
+            self.importance_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+            # Add instructions
+            instructions_label = ttk.Label(parent_frame, 
+                                         text="• Bar length shows overall parameter importance • Colors indicate significance level",
+                                         font=("Arial", 9), foreground="gray")
+            instructions_label.pack(pady=(5, 0))
+            
+            logger.info("Parameter importance plot created successfully")
+            
+        except Exception as e:
+            logger.error(f"Error creating importance plot: {e}")
+            # Create fallback label if plot fails
+            ttk.Label(parent_frame, text="Parameter importance plot visualization unavailable", 
+                     font=("Arial", 10), foreground="red").pack(pady=20)
+    
+    def _update_importance_plot(self):
+        """Update the parameter importance plot with current analysis."""
+        try:
+            if not self.importance_ax or not self.importance_canvas:
+                logger.debug("No importance plot axis or canvas available")
+                return
+            
+            if len(self.screening_optimizer.experimental_data) < 3:
+                logger.debug("Need at least 3 data points for parameter importance analysis")
+                return
+            
+            # Get parameter importance analysis from results manager
+            param_effects = self.results_manager.analyze_parameter_effects()
+            
+            if not param_effects or "overall_parameter_importance" not in param_effects:
+                logger.debug("No parameter importance data available")
+                return
+            
+            # Clear the plot
+            self.importance_ax.clear()
+            
+            # Reset plot settings
+            self.importance_ax.set_title("Parameter Importance Analysis", fontsize=12, fontweight='bold')
+            self.importance_ax.set_xlabel("Importance Score", fontsize=10)
+            self.importance_ax.set_ylabel("Parameters", fontsize=10)
+            self.importance_ax.grid(True, alpha=0.3, axis='x')
+            
+            # Get importance data
+            importance_data = param_effects["overall_parameter_importance"]
+            
+            if not importance_data:
+                self.importance_ax.text(0.5, 0.5, "No parameter importance data available", 
+                                      ha='center', va='center', transform=self.importance_ax.transAxes,
+                                      fontsize=12, color='gray')
+                self.importance_canvas.draw()
+                return
+            
+            # Extract parameter names and importance scores
+            param_names = [item["parameter"] for item in importance_data]
+            importance_scores = [item["importance_score"] for item in importance_data]
+            
+            # Determine colors based on importance levels
+            max_score = max(importance_scores) if importance_scores else 1.0
+            colors = []
+            for score in importance_scores:
+                if max_score > 0:
+                    normalized_score = score / max_score
+                    if normalized_score > 0.7:
+                        colors.append('#d62728')  # High importance - red
+                    elif normalized_score > 0.4:
+                        colors.append('#ff7f0e')  # Medium importance - orange
+                    else:
+                        colors.append('#1f77b4')  # Low importance - blue
+                else:
+                    colors.append('#1f77b4')  # Default blue
+            
+            # Create horizontal bar chart
+            y_positions = range(len(param_names))
+            bars = self.importance_ax.barh(y_positions, importance_scores, color=colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+            
+            # Set parameter names on y-axis
+            self.importance_ax.set_yticks(y_positions)
+            self.importance_ax.set_yticklabels(param_names)
+            
+            # Add value labels on bars
+            for i, (bar, score) in enumerate(zip(bars, importance_scores)):
+                width = bar.get_width()
+                if width > 0:
+                    self.importance_ax.text(width + max_score * 0.01, bar.get_y() + bar.get_height()/2, 
+                                          f'{score:.3f}', ha='left', va='center', fontsize=9, fontweight='bold')
+            
+            # Set x-axis limits with some padding
+            if max_score > 0:
+                self.importance_ax.set_xlim(0, max_score * 1.15)
+            
+            # Add color legend
+            from matplotlib.patches import Patch
+            legend_elements = [
+                Patch(facecolor='#d62728', alpha=0.7, label='High Importance (>70%)'),
+                Patch(facecolor='#ff7f0e', alpha=0.7, label='Medium Importance (40-70%)'),
+                Patch(facecolor='#1f77b4', alpha=0.7, label='Low Importance (<40%)')
+            ]
+            self.importance_ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
+            
+            # Add summary text
+            total_params = len(param_names)
+            high_importance_params = sum(1 for score in importance_scores if score > 0.7 * max_score)
+            
+            summary_text = f"Total Parameters: {total_params}  |  High Importance: {high_importance_params}"
+            self.importance_ax.text(0.02, 0.98, summary_text, transform=self.importance_ax.transAxes,
+                                  fontsize=9, va='top', bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
+            
+            # Refresh the plot
+            self.importance_canvas.draw()
+            
+            logger.debug(f"Updated parameter importance plot with {len(param_names)} parameters")
+            
+        except Exception as e:
+            logger.error(f"Error updating parameter importance plot: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _create_correlation_plot(self, parent_frame):
+        """Create the correlation matrix heatmap plot."""
+        try:
+            # Create matplotlib figure
+            self.correlation_figure = Figure(figsize=(8, 6), dpi=80)
+            self.correlation_ax = self.correlation_figure.add_subplot(111)
+            
+            # Set up the plot
+            self.correlation_ax.set_title("Parameter-Response Correlation Matrix", fontsize=12, fontweight='bold')
+            
+            # Create canvas and add to frame
+            self.correlation_canvas = FigureCanvasTkAgg(self.correlation_figure, parent_frame)
+            self.correlation_canvas.draw()
+            self.correlation_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+            # Add instructions
+            instructions_label = ttk.Label(parent_frame, 
+                                         text="• Heat map shows correlations between parameters and responses • Red=positive, Blue=negative",
+                                         font=("Arial", 9), foreground="gray")
+            instructions_label.pack(pady=(5, 0))
+            
+            logger.info("Correlation matrix plot created successfully")
+            
+        except Exception as e:
+            logger.error(f"Error creating correlation plot: {e}")
+            # Create fallback label if plot fails
+            ttk.Label(parent_frame, text="Correlation matrix plot visualization unavailable", 
+                     font=("Arial", 10), foreground="red").pack(pady=20)
+    
+    def _update_correlation_plot(self):
+        """Update the correlation matrix heatmap with current analysis."""
+        try:
+            if not self.correlation_ax or not self.correlation_canvas:
+                logger.debug("No correlation plot axis or canvas available")
+                return
+            
+            if len(self.screening_optimizer.experimental_data) < 3:
+                logger.debug("Need at least 3 data points for correlation analysis")
+                return
+            
+            # Get parameter effects analysis from results manager
+            param_effects = self.results_manager.analyze_parameter_effects()
+            
+            if not param_effects or "correlations" not in param_effects:
+                logger.debug("No correlation data available")
+                return
+            
+            # Clear the plot
+            self.correlation_ax.clear()
+            
+            # Get correlation data
+            correlations_data = param_effects["correlations"]
+            
+            if not correlations_data:
+                self.correlation_ax.text(0.5, 0.5, "No correlation data available", 
+                                       ha='center', va='center', transform=self.correlation_ax.transAxes,
+                                       fontsize=12, color='gray')
+                self.correlation_canvas.draw()
+                return
+            
+            # Build correlation matrix
+            # Rows = parameters, Columns = responses
+            param_names = []
+            response_names = []
+            correlation_matrix = []
+            
+            # Collect all parameters that have correlations
+            all_params = set()
+            for response_name, response_corrs in correlations_data.items():
+                all_params.update(response_corrs.keys())
+                if response_name not in response_names:
+                    response_names.append(response_name)
+            
+            param_names = sorted(list(all_params))
+            
+            # Build the correlation matrix
+            for param_name in param_names:
+                row = []
+                for response_name in response_names:
+                    if (response_name in correlations_data and 
+                        param_name in correlations_data[response_name]):
+                        correlation = correlations_data[response_name][param_name]
+                        row.append(correlation)
+                    else:
+                        row.append(0.0)  # No correlation data available
+                correlation_matrix.append(row)
+            
+            if not correlation_matrix or not param_names or not response_names:
+                self.correlation_ax.text(0.5, 0.5, "Insufficient correlation data", 
+                                       ha='center', va='center', transform=self.correlation_ax.transAxes,
+                                       fontsize=12, color='gray')
+                self.correlation_canvas.draw()
+                return
+            
+            # Convert to numpy array for easier handling
+            correlation_array = np.array(correlation_matrix)
+            
+            # Create heatmap
+            import matplotlib.colors as mcolors
+            
+            # Use RdBu_r colormap (red for positive, blue for negative)
+            im = self.correlation_ax.imshow(correlation_array, cmap='RdBu_r', aspect='auto', 
+                                          vmin=-1, vmax=1, interpolation='nearest')
+            
+            # Set ticks and labels
+            self.correlation_ax.set_xticks(range(len(response_names)))
+            self.correlation_ax.set_xticklabels(response_names, rotation=45, ha='right')
+            self.correlation_ax.set_yticks(range(len(param_names)))
+            self.correlation_ax.set_yticklabels(param_names)
+            
+            # Add correlation values as text
+            for i in range(len(param_names)):
+                for j in range(len(response_names)):
+                    correlation_val = correlation_array[i, j]
+                    if abs(correlation_val) > 0.001:  # Only show non-zero correlations
+                        # Choose text color based on correlation strength
+                        text_color = 'white' if abs(correlation_val) > 0.5 else 'black'
+                        self.correlation_ax.text(j, i, f'{correlation_val:.2f}', 
+                                               ha='center', va='center', 
+                                               color=text_color, fontsize=9, fontweight='bold')
+            
+            # Add colorbar
+            if not hasattr(self, '_correlation_colorbar') or self._correlation_colorbar is None:
+                try:
+                    self._correlation_colorbar = self.correlation_figure.colorbar(im, ax=self.correlation_ax)
+                    self._correlation_colorbar.set_label('Correlation Coefficient', rotation=270, labelpad=15)
+                except Exception as e:
+                    logger.warning(f"Could not create correlation colorbar: {e}")
+                    self._correlation_colorbar = None
+            else:
+                # Update existing colorbar
+                try:
+                    self._correlation_colorbar.mappable.set_array(correlation_array.ravel())
+                    self._correlation_colorbar.mappable.set_clim(vmin=-1, vmax=1)
+                    self._correlation_colorbar.update_normal(self._correlation_colorbar.mappable)
+                except Exception as e:
+                    logger.warning(f"Could not update correlation colorbar: {e}")
+            
+            # Set title and labels
+            self.correlation_ax.set_title("Parameter-Response Correlation Matrix", fontsize=12, fontweight='bold')
+            self.correlation_ax.set_xlabel("Response Variables", fontsize=10)
+            self.correlation_ax.set_ylabel("Parameters", fontsize=10)
+            
+            # Add summary statistics
+            total_correlations = np.count_nonzero(correlation_array)
+            strong_correlations = np.count_nonzero(np.abs(correlation_array) > 0.5)
+            max_correlation = np.max(np.abs(correlation_array))
+            
+            summary_text = f"Total: {total_correlations} | Strong (>0.5): {strong_correlations} | Max: {max_correlation:.2f}"
+            self.correlation_ax.text(0.02, 0.98, summary_text, transform=self.correlation_ax.transAxes,
+                                   fontsize=9, va='top', 
+                                   bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8))
+            
+            # Adjust layout to prevent label cutoff
+            self.correlation_figure.tight_layout()
+            
+            # Refresh the plot
+            self.correlation_canvas.draw()
+            
+            logger.debug(f"Updated correlation matrix plot with {len(param_names)} parameters and {len(response_names)} responses")
+            
+        except Exception as e:
+            logger.error(f"Error updating correlation matrix plot: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _update_contour_plot(self):
         """Update the contour/heatmap showing the response surface."""
@@ -813,6 +1281,15 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             if self.experiment_count > 2:  # Need at least 3 points for meaningful contour
                 self._update_contour_plot()
             
+            # Update trends plot with new data
+            self._update_trends_plot()
+            
+            # Update parameter importance plot with new data (after enough experiments)
+            if self.experiment_count >= 3:
+                self._update_importance_plot()
+                # Update correlation matrix plot with new data
+                self._update_correlation_plot()
+            
             # Auto-zoom to ensure all points are visible after result submission
             if len(self.experiment_points) > 1:
                 self._zoom_to_fit_all_points()
@@ -1047,10 +1524,47 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
                 self.experiment_count = 0
                 self.is_initial_phase = True
                 self.is_converged = False
+                self.experiment_points = []
+                self.completed_points = set()
+                self.plot_circles = []
+                self.current_contours = []
+                self.response_history = {name: [] for name in self.response_names}
                 
                 # Clear displays
                 self.history_text.delete(1.0, tk.END)
                 self._clear_input()
+                
+                # Clear plots
+                if self.plot_ax:
+                    self.plot_ax.clear()
+                    self._set_plot_bounds()
+                    self.plot_ax.grid(True, alpha=0.3)
+                    if self.plot_canvas:
+                        self.plot_canvas.draw()
+                
+                if self.trends_ax:
+                    self.trends_ax.clear()
+                    self.trends_ax.set_title("Response Trends Over Time", fontsize=12, fontweight='bold')
+                    self.trends_ax.set_xlabel("Experiment Number", fontsize=10)
+                    self.trends_ax.set_ylabel("Response Values", fontsize=10)
+                    self.trends_ax.grid(True, alpha=0.3)
+                    if self.trends_canvas:
+                        self.trends_canvas.draw()
+                
+                if self.importance_ax:
+                    self.importance_ax.clear()
+                    self.importance_ax.set_title("Parameter Importance Analysis", fontsize=12, fontweight='bold')
+                    self.importance_ax.set_xlabel("Importance Score", fontsize=10)
+                    self.importance_ax.set_ylabel("Parameters", fontsize=10)
+                    self.importance_ax.grid(True, alpha=0.3, axis='x')
+                    if self.importance_canvas:
+                        self.importance_canvas.draw()
+                
+                if self.correlation_ax:
+                    self.correlation_ax.clear()
+                    self.correlation_ax.set_title("Parameter-Response Correlation Matrix", fontsize=12, fontweight='bold')
+                    if self.correlation_canvas:
+                        self.correlation_canvas.draw()
                 
                 # Generate new initial suggestions
                 self._generate_initial_suggestions()

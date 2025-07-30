@@ -20,7 +20,7 @@ Classes:
     EnhancedMultiObjectiveOptimizer: Main optimization engine
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.0 Enhanced
+Version: 3.1.2 Enhanced
 """
 
 import ast

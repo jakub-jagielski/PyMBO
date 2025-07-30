@@ -226,7 +226,7 @@ def test_enhanced_components() -> bool:
 
     try:
         # Test enhanced optimizer import
-        from pymbo.core.optimizer import EnhancedMultiObjectiveOptimizer
+        from .core.optimizer import EnhancedMultiObjectiveOptimizer
         import pandas as pd
 
         # Create test configuration
@@ -319,15 +319,15 @@ def main() -> int:
         app_modules = {}
         try:
             # Import core modules
-            from pymbo.gui.gui import SimpleOptimizerApp
-            from pymbo.core.controller import SimpleController
+            from .gui.gui import SimpleOptimizerApp
+            from .core.controller import SimpleController
             
             app_modules['gui'] = SimpleOptimizerApp
             app_modules['controller'] = SimpleController
             
             # Try to import enhanced plotting
             try:
-                from pymbo.utils.plotting import SimplePlotManager
+                from .utils.plotting import SimplePlotManager
                 app_modules['plotting'] = SimplePlotManager
                 logger.info("✓ Enhanced modules with plotting imported successfully")
                 logger.info("✓ Acquisition function visualization available")

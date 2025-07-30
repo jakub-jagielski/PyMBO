@@ -672,7 +672,7 @@ class SimpleController:
                 },
                 "metadata": {
                     "save_timestamp": datetime.now().isoformat(),
-                    "version": "3.1.0",  # Increment version for hypervolume support
+                    "version": "3.1.2",  # Increment version for hypervolume support
                     "has_hypervolume_cache": True,
                 },
             }
