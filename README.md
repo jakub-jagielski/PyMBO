@@ -103,7 +103,7 @@ Please see the `LICENSE` file for full details.
 
 If you use PyMBO in your research, please cite it as follows:
 
-> Jagielski Jakub, J.J.. (2025). *PyMBO: A Python library for multivariate Bayesian optimization and stochastic Bayesian screening*. Version 3.0. Retrieved from https://github.com/your-username/pymbo
+> Jagielski Jakub, J.J.. (2025). *PyMBO: A Python library for multivariate Bayesian optimization and stochastic Bayesian screening*. Version 3.0. Retrieved from https://github.com/jakub-jagielski/pymbo
 
 ## Contributing
 
