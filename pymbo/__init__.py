@@ -11,7 +11,7 @@ Modules:
     screening: SGLBO screening optimization module
 """
 
-__version__ = "3.0"
+__version__ = "3.1.1"
 __author__ = "Jakub Jagielski"
 
 # Core imports for easy access

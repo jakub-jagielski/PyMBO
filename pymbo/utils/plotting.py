@@ -1113,6 +1113,9 @@ class SimplePlotManager:
                 plot_style,
                 show_uncertainty,
                 show_contours,
+                x_range,
+                y_range,
+                z_range,
             )
 
             # Add experimental data points with enhanced styling
@@ -1249,6 +1252,9 @@ class SimplePlotManager:
         plot_style: str,
         show_uncertainty: bool,
         show_contours: bool,
+        x_range=None,
+        y_range=None,
+        z_range=None,
     ):
         """Create the enhanced 3D visualization"""
 
