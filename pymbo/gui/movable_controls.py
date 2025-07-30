@@ -225,6 +225,14 @@ def create_movable_plot_control_panel(parent, plot_type: str, params_config: Dic
             except ImportError:
                 logger.warning("GP Uncertainty controls not available, using standard movable controls")
         
+        elif plot_type == 'sensitivity_analysis' or 'sensitivity' in plot_type.lower():
+            try:
+                from .sensitivity_analysis_controls import create_sensitivity_analysis_control_panel
+                logger.info(f"Using specialized Sensitivity Analysis controls instead of movable for {plot_type}")
+                return create_sensitivity_analysis_control_panel(parent, plot_type, params_config, responses_config, update_callback)
+            except ImportError:
+                logger.warning("Sensitivity Analysis controls not available, using standard movable controls")
+        
         # Default to standard movable controls for other plot types
         control_panel = MovablePlotControlPanel(parent, plot_type, params_config, responses_config, update_callback)
         logger.info(f"Created movable plot control panel for {plot_type}")

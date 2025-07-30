@@ -1,5 +1,27 @@
 # PyMBO Changelog
 
+## [3.1.4] - 2025-07-30
+
+### Added
+- Comprehensive sensitivity analysis control panel with 8 algorithms
+- Algorithm-specific iteration controls with sliders and precise entry
+- New FAST (Fourier Amplitude Sensitivity Test) and Delta moment-independent sensitivity algorithms
+- Advanced options including confidence levels, bootstrap resampling, and parallel processing
+- Reproducible sensitivity analysis with proper random seed handling
+- Enhanced sensitivity analysis plotting with error bars and uncertainty quantification
+
+### Fixed
+- Random seed not being passed to sensitivity analysis calculations
+- Non-deterministic behavior in sensitivity analysis plots
+- Control panel routing issues in window and movable controls
+- Callback compatibility between different control panel types
+
+### Enhanced
+- Sensitivity analysis now supports all 8 algorithms: Variance-based, Morris Elementary Effects, Gradient-based, Sobol-like, GP Lengthscale, Feature Importance, FAST, and Delta
+- Algorithm-specific parameters (Morris trajectories, Sobol order, FAST interference parameter)
+- Comprehensive axis range controls for plot customization
+- Professional control panel UI with organized sections and tooltips
+
 ## [3.0.0] - 2025-01-30
 
 ### Added

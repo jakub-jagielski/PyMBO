@@ -16,6 +16,17 @@ from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 import json
 
+# Performance optimization imports
+try:
+    from pymbo.utils.performance_optimizer import (
+        performance_timer, optimized_plot_update, debounce,
+        plot_cache, memory_manager, perf_monitor
+    )
+    PERFORMANCE_OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    PERFORMANCE_OPTIMIZATION_AVAILABLE = False
+    print("Performance optimization not available - using standard operations")
+
 # Import screening execution windows
 try:
     from .interactive_screening_window import show_interactive_screening_window
@@ -62,7 +73,7 @@ except ImportError:
     print("Enhanced plot controls not available - using basic controls")
 
 # Configuration constants
-APP_TITLE = "Multi-Objective Optimization Laboratory v3.0"
+APP_TITLE = "Multi-Objective Optimization Laboratory v3.1.4"
 MIN_WINDOW_WIDTH = 1200
 MIN_WINDOW_HEIGHT = 800
 DEFAULT_WINDOW_WIDTH = 1400
@@ -160,13 +171,16 @@ class SimpleOptimizerApp(tk.Tk):
         super().__init__()
 
         # Configure modern window appearance
-        self.title("Multi-Objective Optimization Laboratory v3.0")
+        self.title("Multi-Objective Optimization Laboratory v3.1.4")
         self.geometry("1600x1000")  # Larger default size for better content visibility
         self.minsize(1200, 800)  # Increased minimum size
         self.configure(bg=ModernTheme.BACKGROUND)
 
         # Center window on screen
         self._center_window()
+        
+        # Setup cleanup on window close
+        self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
         # Configure modern styling
         self._configure_modern_style()
@@ -469,11 +483,36 @@ class SimpleOptimizerApp(tk.Tk):
         self.content_frame = tk.Frame(self.main_frame, bg=ModernTheme.BACKGROUND)
         self.content_frame.pack(fill=tk.BOTH, expand=True, padx=24, pady=(0, 24))
 
-        # Display the welcome screen when the application starts.
-        self._show_welcome_screen()
-
         # Create and pack the status bar at the bottom of the window.
         self._create_status_bar()
+
+        # Display the welcome screen when the application starts.
+        self._show_welcome_screen()
+    
+    def _on_closing(self):
+        """Handle application cleanup on close"""
+        logger.info("Application closing - performing cleanup")
+        
+        try:
+            if PERFORMANCE_OPTIMIZATION_AVAILABLE:
+                # Clear plot cache
+                plot_cache.clear()
+                
+                # Cleanup memory
+                memory_manager.cleanup_matplotlib()
+                memory_manager.cleanup_torch()
+                memory_manager.force_gc()
+                
+                # Log performance statistics
+                perf_monitor.log_performance("update_all_plots")
+                memory_info = memory_manager.get_memory_info()
+                logger.info(f"Final memory usage: {memory_info['rss_mb']:.1f}MB")
+                
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+        
+        # Close the application
+        self.destroy()
 
     def _create_header_bar(self):
         """Create a modern header bar with branding"""
@@ -508,7 +547,7 @@ class SimpleOptimizerApp(tk.Tk):
         # Version badge
         version_label = tk.Label(
             header_content,
-            text="v3.0",
+            text="v3.1.4",
             bg=ModernTheme.PRIMARY_LIGHT,
             fg=ModernTheme.PRIMARY,
             font=ModernTheme.get_font(10, "bold"),
@@ -3831,18 +3870,40 @@ class SimpleOptimizerApp(tk.Tk):
             return
             
         logger.debug("Updating Sensitivity Analysis plot.")
-        response_name = self.sensitivity_response_var.get()
-
-        # Get selected method and parameters
-        method_display = self.sensitivity_method_var.get()
-        method_code = self.sensitivity_method_mapping.get(
-            method_display, "variance"
-        )
-        n_samples = int(self.sensitivity_samples_var.get())
-
-        logger.debug(
-            f"Using sensitivity method: {method_code} with {n_samples} samples"
-        )
+        
+        # Try to get settings from specialized control panel first
+        control_panel = self.enhanced_controls.get("sensitivity_analysis")
+        if control_panel and hasattr(control_panel, 'get_sensitivity_settings'):
+            # Use settings from specialized control panel
+            settings = control_panel.get_sensitivity_settings()
+            response_name = settings.get("response", self.sensitivity_response_var.get() if hasattr(self, 'sensitivity_response_var') else "")
+            method_code = settings.get("algorithm_code", "variance")
+            n_samples = int(settings.get("iterations", "500"))
+            random_seed = int(settings.get("random_seed", "42"))
+            
+            # Get axis ranges
+            axis_ranges = control_panel.get_axis_ranges()
+            x_range = axis_ranges.get('x_range')
+            y_range = axis_ranges.get('y_range')
+            
+            logger.debug(
+                f"Using sensitivity method from control panel: {method_code} with {n_samples} samples"
+            )
+        else:
+            # Fallback to legacy variables
+            response_name = self.sensitivity_response_var.get()
+            method_display = self.sensitivity_method_var.get()
+            method_code = self.sensitivity_method_mapping.get(
+                method_display, "variance"
+            )
+            n_samples = int(self.sensitivity_samples_var.get())
+            random_seed = 42  # Default seed for legacy mode
+            x_range = None
+            y_range = None
+            
+            logger.debug(
+                f"Using sensitivity method from legacy controls: {method_code} with {n_samples} samples"
+            )
 
         plot_manager.create_sensitivity_analysis_plot(
             self.sensitivity_fig,
@@ -3850,16 +3911,30 @@ class SimpleOptimizerApp(tk.Tk):
             response_name,
             method=method_code,
             n_samples=n_samples,
+            random_seed=random_seed,
         )
+        
+        # Apply axis ranges if available
+        if hasattr(self.sensitivity_fig, 'axes') and self.sensitivity_fig.axes:
+            ax = self.sensitivity_fig.axes[0]
+            if x_range:
+                ax.set_xlim(x_range)
+            if y_range:
+                ax.set_ylim(y_range)
+        
         self.sensitivity_canvas.draw()
         self.sensitivity_canvas.get_tk_widget().update()
 
+    @debounce(0.5) if PERFORMANCE_OPTIMIZATION_AVAILABLE else lambda x: x
     def update_all_plots(self):
         """Update all plots based on the currently selected tab.
         
         This method serves as the main orchestrator for plot updates, delegating
         to specific plot update methods based on the active tab.
         """
+        if PERFORMANCE_OPTIMIZATION_AVAILABLE:
+            perf_monitor.start_timer("update_all_plots")
+        
         logger.debug("Entering update_all_plots")
         plot_manager, current_tab = self._validate_and_setup_plotting()
         if not plot_manager:
@@ -3888,6 +3963,11 @@ class SimpleOptimizerApp(tk.Tk):
         except Exception as e:
             logger.error(f"Error updating plots: {e}", exc_info=True)
         finally:
+            if PERFORMANCE_OPTIMIZATION_AVAILABLE:
+                duration = perf_monitor.end_timer("update_all_plots")
+                if duration > 1.0:  # Log slow plot updates
+                    logger.warning(f"Slow plot update: {duration:.2f}s for tab '{current_tab}'")
+            
             self.update_idletasks()
             self.update()
 

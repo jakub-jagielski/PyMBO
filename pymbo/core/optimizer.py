@@ -14,13 +14,14 @@ Key Features:
 - Pareto front computation and hypervolume metrics
 - Advanced constraint handling and validation
 - Thread-safe operations with comprehensive logging
+- Performance optimization and caching
 
 Classes:
     SimpleParameterTransformer: Handles parameter space transformations
     EnhancedMultiObjectiveOptimizer: Main optimization engine
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.1.2 Enhanced
+Version: 3.1.3 Enhanced
 """
 
 import ast
@@ -34,6 +35,15 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 # Scientific computing imports
 import numpy as np
 import pandas as pd
+
+# Performance optimization imports
+try:
+    from pymbo.utils.performance_optimizer import (
+        performance_timer, DataHasher, LazyLoader, MemoryManager
+    )
+    PERFORMANCE_OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    PERFORMANCE_OPTIMIZATION_AVAILABLE = False
 
 # PyTorch and BoTorch imports for Bayesian optimization
 import torch
@@ -1001,6 +1011,7 @@ class EnhancedMultiObjectiveOptimizer:
         self._cached_hypervolume_data = cached_data
         logger.info("Cached hypervolume data has been set")
 
+    @performance_timer if PERFORMANCE_OPTIMIZATION_AVAILABLE else lambda x: x
     def suggest_next_experiment(self, n_suggestions: int = 1) -> List[Dict[str, Any]]:
         """
         Generates suggestions for the next set of experiments using Bayesian optimization.

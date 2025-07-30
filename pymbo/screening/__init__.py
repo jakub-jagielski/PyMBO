@@ -11,7 +11,7 @@ Key Components:
 - ScreeningResults: Results storage and analysis
 
 Author: Screening Module for Multi-Objective Optimization Laboratory
-Version: 3.1.2
+Version: 3.1.4
 """
 
 from .screening_optimizer import ScreeningOptimizer
@@ -19,7 +19,7 @@ from .parameter_handler import ParameterHandler
 from .design_space_generator import DesignSpaceGenerator
 from .screening_results import ScreeningResults
 
-__version__ = "3.1.2"
+__version__ = "3.1.4"
 __all__ = [
     "ScreeningOptimizer",
     "ParameterHandler", 

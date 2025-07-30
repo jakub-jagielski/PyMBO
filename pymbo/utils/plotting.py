@@ -2523,7 +2523,7 @@ class SimplePlotManager:
         ax = fig.add_subplot(111)
         return model, continuous_params, param_bounds, ax
 
-    def _calculate_sobol_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+    def _calculate_sobol_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
         """
         Calculate Sobol-like sensitivity indices.
         
@@ -2536,6 +2536,9 @@ class SimplePlotManager:
         Returns:
             tuple: (sensitivities, errors) - normalized sensitivity indices and error estimates
         """
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
+        
         sensitivities = []
         errors = []
 
@@ -2601,7 +2604,7 @@ class SimplePlotManager:
 
         return sensitivities, errors
 
-    def _calculate_morris_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+    def _calculate_morris_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
         """
         Calculate Morris elementary effects with error bars.
         
@@ -2614,6 +2617,9 @@ class SimplePlotManager:
         Returns:
             tuple: (effects, errors) - normalized elementary effects and error estimates
         """
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
+        
         effects = []
         errors = []
 
@@ -2704,7 +2710,7 @@ class SimplePlotManager:
 
         return effects, errors
 
-    def _calculate_variance_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+    def _calculate_variance_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
         """
         Calculate variance-based sensitivity with error bars.
         
@@ -2717,6 +2723,9 @@ class SimplePlotManager:
         Returns:
             tuple: (variances, errors) - normalized variance contributions and error estimates
         """
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
+        
         variances = []
         errors = []
 
@@ -2801,7 +2810,7 @@ class SimplePlotManager:
 
         return variances, errors
 
-    def _calculate_gradient_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+    def _calculate_gradient_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
         """
         Calculate gradient-based sensitivity with uncertainty estimation.
         
@@ -2814,6 +2823,9 @@ class SimplePlotManager:
         Returns:
             tuple: (gradients, errors) - normalized gradients and error estimates
         """
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
+        
         gradients = []
         errors = []
 
@@ -2963,7 +2975,7 @@ class SimplePlotManager:
         errors = [0.0] * len(continuous_params)
         return sensitivities, errors
 
-    def _calculate_feature_importance_sensitivity(self, model, continuous_params, param_bounds):
+    def _calculate_feature_importance_sensitivity(self, model, continuous_params, param_bounds, random_seed=42):
         """
         Calculate feature importance based on GP model structure.
         
@@ -2975,6 +2987,9 @@ class SimplePlotManager:
         Returns:
             tuple: (importances, errors) - normalized feature importances and error estimates
         """
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
+        
         importances = []
         errors = []
 
@@ -3084,6 +3099,301 @@ class SimplePlotManager:
 
         return importances, errors
 
+    def _calculate_fast_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
+        """
+        Calculate FAST (Fourier Amplitude Sensitivity Test) indices.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: Parameter bounds dictionary
+            n_samples: Number of samples for analysis
+            
+        Returns:
+            Tuple[List[float], List[float]]: FAST indices and errors
+        """
+        try:
+            import numpy as np
+            from scipy.fft import fft
+            
+            sensitivities = []
+            errors = []
+            
+            # FAST parameters
+            M = 4  # Interference parameter
+            omega_max = n_samples // (2 * M)
+            
+            for param_name in continuous_params:
+                try:
+                    bounds = param_bounds[param_name]
+                    
+                    # Generate FAST sampling points
+                    omega_i = int(omega_max / len(continuous_params))  # Frequency for this parameter
+                    
+                    # Create G function (search curve)
+                    s = np.linspace(0, 2*np.pi, n_samples)
+                    
+                    # Sample all parameters using FAST approach
+                    sample_points = []
+                    for i, other_param in enumerate(continuous_params):
+                        other_bounds = param_bounds[other_param]
+                        if other_param == param_name:
+                            # This is the parameter of interest - use higher frequency
+                            omega = omega_i
+                        else:
+                            # Other parameters use different frequencies
+                            omega = 1 + i
+                        
+                        # Transform [-1,1] to parameter bounds
+                        param_values = (other_bounds[1] - other_bounds[0])/2 * np.sin(omega * s) + (other_bounds[1] + other_bounds[0])/2
+                        sample_points.append(param_values)
+                    
+                    # Evaluate model at sample points
+                    predictions = []
+                    for j in range(len(s)):
+                        param_dict = {continuous_params[k]: sample_points[k][j] for k in range(len(continuous_params))}
+                        
+                        # Add non-continuous parameters at their mean values
+                        for p_name, p_config in self.optimizer.params_config.items():
+                            if p_name not in continuous_params:
+                                if p_config["type"] == "discrete":
+                                    param_dict[p_name] = int(np.mean(p_config["bounds"]))
+                                elif p_config["type"] == "categorical":
+                                    param_dict[p_name] = p_config["values"][0]
+                        
+                        try:
+                            param_tensor = self.optimizer.parameter_transformer.params_to_tensor(param_dict).unsqueeze(0)
+                            with torch.no_grad():
+                                posterior = model.posterior(param_tensor)
+                                pred_val = posterior.mean.item()
+                                if np.isfinite(pred_val):
+                                    predictions.append(pred_val)
+                                else:
+                                    predictions.append(0.0)
+                        except Exception:
+                            predictions.append(0.0)
+                    
+                    predictions = np.array(predictions)
+                    
+                    # Calculate FAST sensitivity using FFT
+                    if len(predictions) > 0:
+                        # Compute Fourier coefficients
+                        Y_fft = fft(predictions)
+                        N = len(predictions)
+                        
+                        # Calculate total variance
+                        total_variance = np.var(predictions)
+                        
+                        if total_variance > 1e-10:
+                            # Calculate variance due to parameter i
+                            # Sum over harmonics of omega_i
+                            Vi = 0
+                            for k in range(1, min(M, N//2)):
+                                idx = k * omega_i
+                                if idx < N//2:
+                                    Vi += 2 * (np.abs(Y_fft[idx])**2 + np.abs(Y_fft[N-idx])**2) / N**2
+                            
+                            # First-order sensitivity index
+                            Si = Vi / total_variance
+                            Si = max(0, min(1, Si))  # Clamp to [0,1]
+                        else:
+                            Si = 0.0
+                    else:
+                        Si = 0.0
+                    
+                    sensitivities.append(Si)
+                    
+                    # Estimate error using bootstrap if we have enough samples
+                    if len(predictions) > 20:
+                        bootstrap_sis = []
+                        for _ in range(10):  # Small number of bootstrap samples
+                            idx = np.random.choice(len(predictions), len(predictions)//2, replace=False)
+                            boot_pred = predictions[idx]
+                            boot_var = np.var(boot_pred)
+                            if boot_var > 1e-10:
+                                boot_fft = fft(boot_pred)
+                                boot_N = len(boot_pred)
+                                boot_Vi = 0
+                                for k in range(1, min(M, boot_N//2)):
+                                    idx_k = k * omega_i
+                                    if idx_k < boot_N//2:
+                                        boot_Vi += 2 * (np.abs(boot_fft[idx_k])**2 + np.abs(boot_fft[boot_N-idx_k])**2) / boot_N**2
+                                boot_Si = max(0, min(1, boot_Vi / boot_var))
+                                bootstrap_sis.append(boot_Si)
+                        
+                        if bootstrap_sis:
+                            errors.append(np.std(bootstrap_sis))
+                        else:
+                            errors.append(0.1 * Si)
+                    else:
+                        errors.append(0.1 * Si)
+                        
+                except Exception as e:
+                    logger.debug(f"Error calculating FAST sensitivity for {param_name}: {e}")
+                    sensitivities.append(0.0)
+                    errors.append(0.0)
+            
+            # Normalize sensitivities
+            max_sens = max(sensitivities) if sensitivities else 0
+            if max_sens > 0:
+                sensitivities = [s / max_sens for s in sensitivities]
+                errors = [e / max_sens for e in errors]
+            
+            return sensitivities, errors
+            
+        except ImportError:
+            logger.warning("SciPy not available for FAST sensitivity analysis, using variance method")
+            return self._calculate_variance_sensitivity(model, continuous_params, param_bounds, n_samples)
+        except Exception as e:
+            logger.error(f"Error in FAST sensitivity calculation: {e}")
+            # Fallback to uniform sensitivity
+            n_params = len(continuous_params)
+            return [1.0/n_params] * n_params, [0.1] * n_params
+
+    def _calculate_delta_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
+        """
+        Calculate Delta moment-independent sensitivity indices.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: Parameter bounds dictionary
+            n_samples: Number of samples for analysis
+            
+        Returns:
+            Tuple[List[float], List[float]]: Delta indices and errors
+        """
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
+        
+        try:
+            sensitivities = []
+            errors = []
+            
+            # Generate reference sample
+            ref_samples = []
+            for param_name in continuous_params:
+                bounds = param_bounds[param_name]
+                samples = np.random.uniform(bounds[0], bounds[1], n_samples)
+                ref_samples.append(samples)
+            
+            # Get reference predictions
+            ref_predictions = []
+            for i in range(n_samples):
+                param_dict = {continuous_params[j]: ref_samples[j][i] for j in range(len(continuous_params))}
+                
+                # Add non-continuous parameters
+                for p_name, p_config in self.optimizer.params_config.items():
+                    if p_name not in continuous_params:
+                        if p_config["type"] == "discrete":
+                            param_dict[p_name] = int(np.mean(p_config["bounds"]))
+                        elif p_config["type"] == "categorical":
+                            param_dict[p_name] = p_config["values"][0]
+                
+                try:
+                    param_tensor = self.optimizer.parameter_transformer.params_to_tensor(param_dict).unsqueeze(0)
+                    with torch.no_grad():
+                        posterior = model.posterior(param_tensor)
+                        pred_val = posterior.mean.item()
+                        if np.isfinite(pred_val):
+                            ref_predictions.append(pred_val)
+                        else:
+                            ref_predictions.append(0.0)
+                except Exception:
+                    ref_predictions.append(0.0)
+            
+            ref_predictions = np.array(ref_predictions)
+            
+            # Calculate Delta index for each parameter
+            for k, param_name in enumerate(continuous_params):
+                try:
+                    bounds = param_bounds[param_name]
+                    
+                    # Generate conditional samples (fix parameter k)
+                    cond_predictions = []
+                    fixed_values = np.random.uniform(bounds[0], bounds[1], min(50, n_samples//10))
+                    
+                    for fixed_val in fixed_values:
+                        # Generate samples with parameter k fixed
+                        for i in range(min(20, n_samples//50)):
+                            param_dict = {}
+                            for j, other_param in enumerate(continuous_params):
+                                if j == k:
+                                    param_dict[other_param] = fixed_val
+                                else:
+                                    other_bounds = param_bounds[other_param]
+                                    param_dict[other_param] = np.random.uniform(other_bounds[0], other_bounds[1])
+                            
+                            # Add non-continuous parameters
+                            for p_name, p_config in self.optimizer.params_config.items():
+                                if p_name not in continuous_params:
+                                    if p_config["type"] == "discrete":
+                                        param_dict[p_name] = int(np.mean(p_config["bounds"]))
+                                    elif p_config["type"] == "categorical":
+                                        param_dict[p_name] = p_config["values"][0]
+                            
+                            try:
+                                param_tensor = self.optimizer.parameter_transformer.params_to_tensor(param_dict).unsqueeze(0)
+                                with torch.no_grad():
+                                    posterior = model.posterior(param_tensor)
+                                    pred_val = posterior.mean.item()
+                                    if np.isfinite(pred_val):
+                                        cond_predictions.append(pred_val)
+                            except Exception:
+                                continue
+                    
+                    if len(cond_predictions) > 5:
+                        cond_predictions = np.array(cond_predictions)
+                        
+                        # Calculate Delta index using CDF comparison
+                        # Delta measures the shift in the output distribution
+                        ref_sorted = np.sort(ref_predictions)
+                        cond_sorted = np.sort(cond_predictions)
+                        
+                        # Use Kolmogorov-Smirnov-like statistic
+                        if len(ref_sorted) > 0 and len(cond_sorted) > 0:
+                            # Interpolate to common grid
+                            min_val = min(np.min(ref_sorted), np.min(cond_sorted))
+                            max_val = max(np.max(ref_sorted), np.max(cond_sorted))
+                            
+                            if max_val > min_val:
+                                grid = np.linspace(min_val, max_val, 50)
+                                
+                                # Calculate empirical CDFs
+                                ref_cdf = np.searchsorted(ref_sorted, grid, side='right') / len(ref_sorted)
+                                cond_cdf = np.searchsorted(cond_sorted, grid, side='right') / len(cond_sorted)
+                                
+                                # Delta index as maximum difference between CDFs
+                                delta_index = np.max(np.abs(ref_cdf - cond_cdf))
+                            else:
+                                delta_index = 0.0
+                        else:
+                            delta_index = 0.0
+                    else:
+                        delta_index = 0.0
+                    
+                    sensitivities.append(delta_index)
+                    errors.append(0.1 * delta_index)  # Simple error estimate
+                    
+                except Exception as e:
+                    logger.debug(f"Error calculating Delta sensitivity for {param_name}: {e}")
+                    sensitivities.append(0.0)
+                    errors.append(0.0)
+            
+            # Normalize sensitivities
+            max_sens = max(sensitivities) if sensitivities else 0
+            if max_sens > 0:
+                sensitivities = [s / max_sens for s in sensitivities]
+                errors = [e / max_sens for e in errors]
+            
+            return sensitivities, errors
+            
+        except Exception as e:
+            logger.error(f"Error in Delta sensitivity calculation: {e}")
+            # Fallback to uniform sensitivity
+            n_params = len(continuous_params)
+            return [1.0/n_params] * n_params, [0.1] * n_params
+
     def _plot_sensitivity_results(self, ax, continuous_params, values, errors, response_name, method, ylabel):
         """
         Plot sensitivity results with error bars and formatting.
@@ -3144,10 +3454,13 @@ class SimplePlotManager:
         fig.tight_layout()
 
     def create_sensitivity_analysis_plot(
-        self, fig, canvas, response_name, method="variance", n_samples=500
+        self, fig, canvas, response_name, method="variance", n_samples=500, random_seed=42
     ):
         """Create Enhanced Sensitivity Analysis plot with multiple methods and error bars"""
         fig.clear()
+        
+        # Set random seed for reproducible results
+        np.random.seed(random_seed)
 
         try:
             # Setup and validate parameters
@@ -3161,7 +3474,7 @@ class SimplePlotManager:
 
             if method == "sobol":
                 sensitivities, errors = self._calculate_sobol_sensitivity(
-                    model, continuous_params, param_bounds, n_samples
+                    model, continuous_params, param_bounds, n_samples, random_seed
                 )
                 self._plot_sensitivity_results(
                     ax, continuous_params, sensitivities, errors, response_name, method, "Sensitivity Index"
@@ -3169,7 +3482,7 @@ class SimplePlotManager:
 
             elif method == "morris":
                 effects, errors = self._calculate_morris_sensitivity(
-                    model, continuous_params, param_bounds, n_samples
+                    model, continuous_params, param_bounds, n_samples, random_seed
                 )
                 self._plot_sensitivity_results(
                     ax, continuous_params, effects, errors, response_name, method, "Normalized Mean Elementary Effect"
@@ -3177,7 +3490,7 @@ class SimplePlotManager:
 
             elif method == "gradient":
                 gradients, errors = self._calculate_gradient_sensitivity(
-                    model, continuous_params, param_bounds, n_samples
+                    model, continuous_params, param_bounds, n_samples, random_seed
                 )
                 self._plot_sensitivity_results(
                     ax, continuous_params, gradients, errors, response_name, method, "Normalized Local Gradient"
@@ -3204,7 +3517,7 @@ class SimplePlotManager:
 
             elif method == "variance":
                 variances, errors = self._calculate_variance_sensitivity(
-                    model, continuous_params, param_bounds, n_samples
+                    model, continuous_params, param_bounds, n_samples, random_seed
                 )
                 self._plot_sensitivity_results(
                     ax, continuous_params, variances, errors, response_name, method, "Variance Contribution"
@@ -3212,16 +3525,32 @@ class SimplePlotManager:
 
             elif method == "feature_importance":
                 importances, errors = self._calculate_feature_importance_sensitivity(
-                    model, continuous_params, param_bounds
+                    model, continuous_params, param_bounds, random_seed
                 )
                 self._plot_sensitivity_results(
                     ax, continuous_params, importances, errors, response_name, method, "Normalized Feature Importance"
                 )
 
+            elif method == "fast":
+                sensitivities, errors = self._calculate_fast_sensitivity(
+                    model, continuous_params, param_bounds, n_samples, random_seed
+                )
+                self._plot_sensitivity_results(
+                    ax, continuous_params, sensitivities, errors, response_name, method, "FAST Sensitivity Index"
+                )
+
+            elif method == "delta":
+                delta_indices, errors = self._calculate_delta_sensitivity(
+                    model, continuous_params, param_bounds, n_samples, random_seed
+                )
+                self._plot_sensitivity_results(
+                    ax, continuous_params, delta_indices, errors, response_name, method, "Delta Moment-Independent Index"
+                )
+
             else:
                 # Default to variance method if unknown method specified
                 self.create_sensitivity_analysis_plot(
-                    fig, canvas, response_name, method="variance", n_samples=n_samples
+                    fig, canvas, response_name, method="variance", n_samples=n_samples, random_seed=random_seed
                 )
                 return
 
