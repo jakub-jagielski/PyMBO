@@ -91,6 +91,10 @@ class InteractiveScreeningWindow:
         self.correlation_canvas = None
         self.correlation_ax = None
         
+        # Control panel components
+        self.control_panels = {}
+        self.current_tab = "parameter_space"
+        
         # Create the window
         self._create_window()
         
@@ -195,25 +199,31 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
         plot_notebook = ttk.Notebook(plot_frame)
         plot_notebook.pack(fill=tk.BOTH, expand=True)
         
+        # Store notebook reference for control panel updates
+        self.plot_notebook = plot_notebook
+        
         # Parameter space exploration tab
         param_space_frame = ttk.Frame(plot_notebook)
         plot_notebook.add(param_space_frame, text="Parameter Space")
-        self._create_plot(param_space_frame)
+        self._create_plot_with_controls(param_space_frame, "parameter_space")
         
         # Response trends tab
         trends_frame = ttk.Frame(plot_notebook)
         plot_notebook.add(trends_frame, text="Response Trends")
-        self._create_trends_plot(trends_frame)
+        self._create_plot_with_controls(trends_frame, "trends")
         
         # Parameter importance tab
         importance_frame = ttk.Frame(plot_notebook)
         plot_notebook.add(importance_frame, text="Parameter Importance")
-        self._create_importance_plot(importance_frame)
+        self._create_plot_with_controls(importance_frame, "importance")
         
         # Correlation matrix tab
         correlation_frame = ttk.Frame(plot_notebook)
         plot_notebook.add(correlation_frame, text="Correlation Matrix")
-        self._create_correlation_plot(correlation_frame)
+        self._create_plot_with_controls(correlation_frame, "correlation")
+        
+        # Bind tab change event to update control panels
+        plot_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         
         # Progress and history section
         progress_frame = ttk.LabelFrame(scrollable_frame, text="Progress & History", padding="10")
@@ -255,6 +265,37 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
         main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+    
+    def _create_plot_with_controls(self, parent_frame, plot_type):
+        """Create a plot with its specific control panel."""
+        # Create horizontal layout
+        main_frame = ttk.Frame(parent_frame)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Left side: Plot
+        plot_frame = ttk.Frame(main_frame)
+        plot_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Right side: Control panel
+        control_frame = ttk.LabelFrame(main_frame, text="Plot Controls", padding="10")
+        control_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
+        
+        # Create the appropriate plot
+        if plot_type == "parameter_space":
+            self._create_plot(plot_frame)
+            self._create_parameter_space_controls(control_frame)
+        elif plot_type == "trends":
+            self._create_trends_plot(plot_frame)
+            self._create_trends_controls(control_frame)
+        elif plot_type == "importance":
+            self._create_importance_plot(plot_frame)
+            self._create_importance_controls(control_frame)
+        elif plot_type == "correlation":
+            self._create_correlation_plot(plot_frame)
+            self._create_correlation_controls(control_frame)
+        
+        # Store control panel reference
+        self.control_panels[plot_type] = control_frame
     
     def _create_plot(self, parent_frame):
         """Create the real-time screening progress plot."""
@@ -306,9 +347,15 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             param_names = list(self.params_config.keys())
             
             if len(param_names) >= 2:
-                # Get bounds for first two parameters
-                param1_config = self.params_config[param_names[0]]
-                param2_config = self.params_config[param_names[1]]
+                # Get parameters from controls or defaults
+                x_param_var = getattr(self, 'x_param_var', None)
+                y_param_var = getattr(self, 'y_param_var', None)
+                x_param = x_param_var.get() if x_param_var else param_names[0]
+                y_param = y_param_var.get() if y_param_var else param_names[1]
+                
+                # Get bounds for selected parameters
+                param1_config = self.params_config[x_param]
+                param2_config = self.params_config[y_param]
                 
                 if param1_config["type"] in ["continuous", "discrete"]:
                     x_bounds = param1_config["bounds"]
@@ -395,47 +442,113 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             # Plot trends for each response
             colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray']
             
+            # Check which responses to show
+            response_vars = {}
+            if hasattr(self, 'trends_response_vars') and self.trends_response_vars:
+                response_vars = self.trends_response_vars
+            
+            show_trend_lines = True  # Default
+            if hasattr(self, 'show_trend_lines_var') and self.show_trend_lines_var:
+                try:
+                    show_trend_lines = self.show_trend_lines_var.get()
+                    logger.debug(f"Show trend lines: {show_trend_lines}")
+                except Exception as e:
+                    logger.debug(f"Error getting trend lines setting: {e}")
+            
+            show_smoothing = False  # Default  
+            if hasattr(self, 'smoothing_var') and self.smoothing_var:
+                try:
+                    show_smoothing = self.smoothing_var.get()
+                    logger.debug(f"Show smoothing: {show_smoothing}")
+                except Exception as e:
+                    logger.debug(f"Error getting smoothing setting: {e}")
+            
             for i, response_name in enumerate(self.response_names):
                 if response_name not in data.columns:
                     continue
                 
+                # Skip if response is disabled
+                if response_name in response_vars:
+                    try:
+                        if not response_vars[response_name].get():
+                            logger.debug(f"Skipping disabled response: {response_name}")
+                            continue
+                    except Exception as e:
+                        logger.debug(f"Error checking response {response_name} visibility: {e}")
+                
                 response_values = data[response_name].values
                 color = colors[i % len(colors)]
                 
-                # Plot the trend line
-                self.trends_ax.plot(experiment_numbers, response_values, 
-                                  color=color, marker='o', markersize=6, 
-                                  linewidth=2, label=response_name, alpha=0.8)
-                
-                # Add target/goal line if specified
-                response_config = self.responses_config.get(response_name, {})
-                goal = response_config.get("goal", "None")
-                
-                if goal == "Target" and "target" in response_config:
-                    target_value = response_config["target"]
-                    self.trends_ax.axhline(y=target_value, color=color, linestyle='--', 
-                                         alpha=0.5, label=f'{response_name} Target')
-                
-                # Highlight best value so far
-                if goal == "Maximize":
-                    best_idx = np.argmax(response_values)
-                    best_value = response_values[best_idx]
-                elif goal == "Minimize":
-                    best_idx = np.argmin(response_values)
-                    best_value = response_values[best_idx]
-                elif goal == "Target":
-                    target_value = response_config.get("target", np.mean(response_values))
-                    deviations = np.abs(response_values - target_value)
-                    best_idx = np.argmin(deviations)
-                    best_value = response_values[best_idx]
+                # Plot the trend line or just points
+                if show_trend_lines:
+                    # Apply smoothing if requested
+                    if show_smoothing and len(response_values) > 3:
+                        try:
+                            from scipy.signal import savgol_filter
+                            if len(response_values) >= 5:
+                                window_length = min(5, len(response_values) if len(response_values) % 2 == 1 else len(response_values) - 1)
+                                smoothed_values = savgol_filter(response_values, window_length, 2)
+                                self.trends_ax.plot(experiment_numbers, smoothed_values, 
+                                                  color=color, linewidth=3, alpha=0.6, linestyle='--')
+                        except ImportError:
+                            pass  # No scipy available
+                    
+                    self.trends_ax.plot(experiment_numbers, response_values, 
+                                      color=color, marker='o', markersize=6, 
+                                      linewidth=2, label=response_name, alpha=0.8)
                 else:
-                    best_idx = len(response_values) - 1  # Latest value
-                    best_value = response_values[best_idx]
+                    # Just scatter points
+                    self.trends_ax.scatter(experiment_numbers, response_values, 
+                                         color=color, s=50, label=response_name, alpha=0.8)
                 
-                # Mark best point with a star
-                self.trends_ax.scatter(experiment_numbers[best_idx], best_value, 
-                                     marker='*', s=200, color=color, 
-                                     edgecolors='black', linewidth=1, zorder=5)
+                # Add target/goal line if specified and enabled
+                show_targets = True  # Default
+                if hasattr(self, 'show_targets_var') and self.show_targets_var:
+                    try:
+                        show_targets = self.show_targets_var.get()
+                    except Exception as e:
+                        logger.debug(f"Error getting show targets setting: {e}")
+                        
+                if show_targets:
+                    response_config = self.responses_config.get(response_name, {})
+                    goal = response_config.get("goal", "None")
+                    
+                    if goal == "Target" and "target" in response_config:
+                        target_value = response_config["target"]
+                        self.trends_ax.axhline(y=target_value, color=color, linestyle='--', 
+                                             alpha=0.5, label=f'{response_name} Target')
+                
+                # Highlight best value so far if enabled
+                show_best_points = True  # Default
+                if hasattr(self, 'show_best_points_var') and self.show_best_points_var:
+                    try:
+                        show_best_points = self.show_best_points_var.get()
+                    except Exception as e:
+                        logger.debug(f"Error getting show best points setting: {e}")
+                        
+                if show_best_points:
+                    response_config = self.responses_config.get(response_name, {})
+                    goal = response_config.get("goal", "None")
+                    
+                    if goal == "Maximize":
+                        best_idx = np.argmax(response_values)
+                        best_value = response_values[best_idx]
+                    elif goal == "Minimize":
+                        best_idx = np.argmin(response_values)
+                        best_value = response_values[best_idx]
+                    elif goal == "Target":
+                        target_value = response_config.get("target", np.mean(response_values))
+                        deviations = np.abs(response_values - target_value)
+                        best_idx = np.argmin(deviations)  
+                        best_value = response_values[best_idx]
+                    else:
+                        best_idx = len(response_values) - 1  # Latest value
+                        best_value = response_values[best_idx]
+                    
+                    # Mark best point with a star
+                    self.trends_ax.scatter(experiment_numbers[best_idx], best_value, 
+                                         marker='*', s=200, color=color, 
+                                         edgecolors='black', linewidth=1, zorder=5)
             
             # Add legend
             if len(self.response_names) > 0:
@@ -538,20 +651,55 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             param_names = [item["parameter"] for item in importance_data]
             importance_scores = [item["importance_score"] for item in importance_data]
             
+            # Sort data if requested
+            sort_mode = "importance"  # Default
+            if hasattr(self, 'importance_sort_var') and self.importance_sort_var:
+                try:
+                    sort_mode = self.importance_sort_var.get()
+                    logger.debug(f"Using importance sort mode: {sort_mode}")
+                except Exception as e:
+                    logger.debug(f"Error getting importance sort mode: {e}")
+            
+            if sort_mode == "name":
+                # Sort by parameter name
+                combined = list(zip(param_names, importance_scores))
+                combined.sort(key=lambda x: x[0])
+                param_names, importance_scores = zip(*combined)
+                param_names, importance_scores = list(param_names), list(importance_scores)
+            else:
+                # Sort by importance (default - already sorted in most cases)
+                combined = list(zip(param_names, importance_scores))
+                combined.sort(key=lambda x: x[1], reverse=True)
+                param_names, importance_scores = zip(*combined)
+                param_names, importance_scores = list(param_names), list(importance_scores)
+            
             # Determine colors based on importance levels
+            color_by_significance = True  # Default
+            if hasattr(self, 'color_by_significance_var') and self.color_by_significance_var:
+                try:
+                    color_by_significance = self.color_by_significance_var.get()
+                    logger.debug(f"Color by significance: {color_by_significance}")
+                except Exception as e:
+                    logger.debug(f"Error getting color by significance setting: {e}")
+            
             max_score = max(importance_scores) if importance_scores else 1.0
-            colors = []
-            for score in importance_scores:
-                if max_score > 0:
-                    normalized_score = score / max_score
-                    if normalized_score > 0.7:
-                        colors.append('#d62728')  # High importance - red
-                    elif normalized_score > 0.4:
-                        colors.append('#ff7f0e')  # Medium importance - orange
+            
+            if color_by_significance:
+                colors = []
+                for score in importance_scores:
+                    if max_score > 0:
+                        normalized_score = score / max_score
+                        if normalized_score > 0.7:
+                            colors.append('#d62728')  # High importance - red
+                        elif normalized_score > 0.4:
+                            colors.append('#ff7f0e')  # Medium importance - orange
+                        else:
+                            colors.append('#1f77b4')  # Low importance - blue
                     else:
-                        colors.append('#1f77b4')  # Low importance - blue
-                else:
-                    colors.append('#1f77b4')  # Default blue
+                        colors.append('#1f77b4')  # Default blue
+            else:
+                # Use single color
+                colors = ['#1f77b4'] * len(importance_scores)
             
             # Create horizontal bar chart
             y_positions = range(len(param_names))
@@ -561,12 +709,21 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             self.importance_ax.set_yticks(y_positions)
             self.importance_ax.set_yticklabels(param_names)
             
-            # Add value labels on bars
-            for i, (bar, score) in enumerate(zip(bars, importance_scores)):
-                width = bar.get_width()
-                if width > 0:
-                    self.importance_ax.text(width + max_score * 0.01, bar.get_y() + bar.get_height()/2, 
-                                          f'{score:.3f}', ha='left', va='center', fontsize=9, fontweight='bold')
+            # Add value labels on bars if enabled
+            show_values = True  # Default
+            if hasattr(self, 'show_values_var') and self.show_values_var:
+                try:
+                    show_values = self.show_values_var.get()
+                    logger.debug(f"Show importance values: {show_values}")
+                except Exception as e:
+                    logger.debug(f"Error getting show values setting: {e}")
+                    
+            if show_values:
+                for i, (bar, score) in enumerate(zip(bars, importance_scores)):
+                    width = bar.get_width()
+                    if width > 0:
+                        self.importance_ax.text(width + max_score * 0.01, bar.get_y() + bar.get_height()/2, 
+                                              f'{score:.3f}', ha='left', va='center', fontsize=9, fontweight='bold')
             
             # Set x-axis limits with some padding
             if max_score > 0:
@@ -699,8 +856,24 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             # Create heatmap
             import matplotlib.colors as mcolors
             
-            # Use RdBu_r colormap (red for positive, blue for negative)
-            im = self.correlation_ax.imshow(correlation_array, cmap='RdBu_r', aspect='auto', 
+            # Use selected colormap
+            cmap_name = 'RdBu_r'  # Default
+            if hasattr(self, 'correlation_colormap_var') and self.correlation_colormap_var:
+                try:
+                    cmap_name = self.correlation_colormap_var.get()
+                    logger.debug(f"Using colormap: {cmap_name}")
+                except Exception as e:
+                    logger.debug(f"Error getting colormap: {e}")
+            
+            aspect_ratio = 'auto'  # Default
+            if hasattr(self, 'square_matrix_var') and self.square_matrix_var:
+                try:
+                    aspect_ratio = 'equal' if self.square_matrix_var.get() else 'auto'
+                    logger.debug(f"Using aspect ratio: {aspect_ratio}")
+                except Exception as e:
+                    logger.debug(f"Error getting aspect ratio: {e}")
+            
+            im = self.correlation_ax.imshow(correlation_array, cmap=cmap_name, aspect=aspect_ratio, 
                                           vmin=-1, vmax=1, interpolation='nearest')
             
             # Set ticks and labels
@@ -709,16 +882,33 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             self.correlation_ax.set_yticks(range(len(param_names)))
             self.correlation_ax.set_yticklabels(param_names)
             
-            # Add correlation values as text
-            for i in range(len(param_names)):
-                for j in range(len(response_names)):
-                    correlation_val = correlation_array[i, j]
-                    if abs(correlation_val) > 0.001:  # Only show non-zero correlations
-                        # Choose text color based on correlation strength
-                        text_color = 'white' if abs(correlation_val) > 0.5 else 'black'
-                        self.correlation_ax.text(j, i, f'{correlation_val:.2f}', 
-                                               ha='center', va='center', 
-                                               color=text_color, fontsize=9, fontweight='bold')
+            # Add correlation values as text if enabled
+            show_values = True  # Default
+            if hasattr(self, 'show_correlation_values_var') and self.show_correlation_values_var:
+                try:
+                    show_values = self.show_correlation_values_var.get()
+                    logger.debug(f"Show correlation values: {show_values}")
+                except Exception as e:
+                    logger.debug(f"Error getting show values setting: {e}")
+            
+            threshold = 0.001  # Default
+            if hasattr(self, 'min_correlation_var') and self.min_correlation_var:
+                try:
+                    threshold = self.min_correlation_var.get()
+                    logger.debug(f"Using correlation threshold: {threshold}")
+                except Exception as e:
+                    logger.debug(f"Error getting correlation threshold: {e}")
+            
+            if show_values:
+                for i in range(len(param_names)):
+                    for j in range(len(response_names)):
+                        correlation_val = correlation_array[i, j]
+                        if abs(correlation_val) > threshold:  # Only show correlations above threshold
+                            # Choose text color based on correlation strength
+                            text_color = 'white' if abs(correlation_val) > 0.5 else 'black'
+                            self.correlation_ax.text(j, i, f'{correlation_val:.2f}', 
+                                                   ha='center', va='center', 
+                                                   color=text_color, fontsize=9, fontweight='bold')
             
             # Add colorbar
             if not hasattr(self, '_correlation_colorbar') or self._correlation_colorbar is None:
@@ -765,6 +955,441 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             import traceback
             traceback.print_exc()
     
+    def _create_parameter_space_controls(self, control_frame):
+        """Create control panel for parameter space plot."""
+        try:
+            # Plot type selection
+            ttk.Label(control_frame, text="Display Mode:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.param_display_mode = tk.StringVar(value="contour")
+            display_modes = [("Contour Plot", "contour"), ("Scatter Only", "scatter"), ("Heat Map", "heatmap")]
+            
+            for text, mode in display_modes:
+                ttk.Radiobutton(control_frame, text=text, variable=self.param_display_mode, 
+                               value=mode, command=self._on_param_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Zoom controls
+            ttk.Label(control_frame, text="View Controls:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            ttk.Button(control_frame, text="Zoom to Fit All", width=15,
+                      command=self._zoom_to_fit_all_points).pack(pady=2)
+            
+            ttk.Button(control_frame, text="Reset View", width=15,
+                      command=self._reset_param_plot_view).pack(pady=2)
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Parameter selection for axes
+            ttk.Label(control_frame, text="Axis Parameters:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            param_names = list(self.params_config.keys())
+            if len(param_names) >= 2:
+                ttk.Label(control_frame, text="X-Axis:").pack(anchor=tk.W)
+                self.x_param_var = tk.StringVar(value=param_names[0])
+                x_combo = ttk.Combobox(control_frame, textvariable=self.x_param_var, 
+                                      values=param_names, state="readonly", width=12)
+                x_combo.pack(pady=(0, 5))
+                x_combo.bind("<<ComboboxSelected>>", self._on_axis_param_change)
+                
+                ttk.Label(control_frame, text="Y-Axis:").pack(anchor=tk.W)
+                self.y_param_var = tk.StringVar(value=param_names[1])
+                y_combo = ttk.Combobox(control_frame, textvariable=self.y_param_var, 
+                                      values=param_names, state="readonly", width=12)
+                y_combo.pack(pady=(0, 5))
+                y_combo.bind("<<ComboboxSelected>>", self._on_axis_param_change)
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Response selection for contour
+            ttk.Label(control_frame, text="Response for Contour:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            response_names = list(self.responses_config.keys())
+            if response_names:
+                self.contour_response_var = tk.StringVar(value=response_names[0])
+                response_combo = ttk.Combobox(control_frame, textvariable=self.contour_response_var, 
+                                            values=response_names, state="readonly", width=12)
+                response_combo.pack()
+                response_combo.bind("<<ComboboxSelected>>", self._on_contour_response_change)
+            
+            logger.info("Parameter space control panel created")
+            
+        except Exception as e:
+            logger.error(f"Error creating parameter space controls: {e}")
+    
+    def _create_trends_controls(self, control_frame):
+        """Create control panel for trends plot."""
+        try:
+            # Response selection
+            ttk.Label(control_frame, text="Responses to Show:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.trends_response_vars = {}
+            for response_name in self.response_names:
+                var = tk.BooleanVar(value=True)
+                self.trends_response_vars[response_name] = var
+                ttk.Checkbutton(control_frame, text=response_name, variable=var,
+                               command=self._on_trends_response_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Display options
+            ttk.Label(control_frame, text="Display Options:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.show_targets_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Show Target Lines", 
+                           variable=self.show_targets_var,
+                           command=self._on_trends_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            self.show_best_points_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Highlight Best Points", 
+                           variable=self.show_best_points_var,
+                           command=self._on_trends_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            self.show_trend_lines_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Show Trend Lines", 
+                           variable=self.show_trend_lines_var,
+                           command=self._on_trends_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Smoothing
+            ttk.Label(control_frame, text="Smoothing:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.smoothing_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(control_frame, text="Apply Smoothing", 
+                           variable=self.smoothing_var,
+                           command=self._on_trends_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            # Refresh button
+            ttk.Button(control_frame, text="Refresh Plot", width=15,
+                      command=self._update_trends_plot).pack(pady=(10, 0))
+            
+            logger.info("Trends control panel created")
+            
+        except Exception as e:
+            logger.error(f"Error creating trends controls: {e}")
+    
+    def _create_importance_controls(self, control_frame):
+        """Create control panel for parameter importance plot."""
+        try:
+            # Sort options
+            ttk.Label(control_frame, text="Sort By:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.importance_sort_var = tk.StringVar(value="importance")
+            sort_options = [("Importance Score", "importance"), ("Parameter Name", "name")]
+            
+            for text, value in sort_options:
+                ttk.Radiobutton(control_frame, text=text, variable=self.importance_sort_var, 
+                               value=value, command=self._on_importance_sort_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Threshold controls
+            ttk.Label(control_frame, text="Significance Threshold:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.importance_threshold_var = tk.DoubleVar(value=0.1)
+            threshold_scale = ttk.Scale(control_frame, from_=0.0, to=1.0, 
+                                       variable=self.importance_threshold_var,
+                                       orient=tk.HORIZONTAL, length=120,
+                                       command=self._on_importance_threshold_change)
+            threshold_scale.pack(pady=(0, 5))
+            
+            self.threshold_label = ttk.Label(control_frame, text="0.10")
+            self.threshold_label.pack()
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Display options
+            ttk.Label(control_frame, text="Display Options:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.show_values_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Show Values", 
+                           variable=self.show_values_var,
+                           command=self._on_importance_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            self.color_by_significance_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Color by Significance", 
+                           variable=self.color_by_significance_var,
+                           command=self._on_importance_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            # Refresh button
+            ttk.Button(control_frame, text="Refresh Plot", width=15,
+                      command=self._update_importance_plot).pack(pady=(10, 0))
+            
+            logger.info("Importance control panel created")
+            
+        except Exception as e:
+            logger.error(f"Error creating importance controls: {e}")
+    
+    def _create_correlation_controls(self, control_frame):
+        """Create control panel for correlation matrix plot."""
+        try:
+            # Colormap selection
+            ttk.Label(control_frame, text="Color Scheme:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.correlation_colormap_var = tk.StringVar(value="RdBu_r")
+            colormaps = [("Red-Blue", "RdBu_r"), ("Blue-Red", "RdBu"), ("Viridis", "viridis"), ("Plasma", "plasma")]
+            
+            for text, cmap in colormaps:
+                ttk.Radiobutton(control_frame, text=text, variable=self.correlation_colormap_var, 
+                               value=cmap, command=self._on_correlation_colormap_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Value display
+            ttk.Label(control_frame, text="Value Display:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.show_correlation_values_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Show Correlation Values", 
+                           variable=self.show_correlation_values_var,
+                           command=self._on_correlation_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            # Minimum correlation threshold
+            ttk.Label(control_frame, text="Min. Correlation to Show:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
+            
+            self.min_correlation_var = tk.DoubleVar(value=0.001)
+            correlation_scale = ttk.Scale(control_frame, from_=0.0, to=0.5, 
+                                         variable=self.min_correlation_var,
+                                         orient=tk.HORIZONTAL, length=120,
+                                         command=self._on_correlation_threshold_change)
+            correlation_scale.pack(pady=(0, 5))
+            
+            self.correlation_threshold_label = ttk.Label(control_frame, text="0.001")
+            self.correlation_threshold_label.pack()
+            
+            ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+            
+            # Matrix options
+            ttk.Label(control_frame, text="Matrix Options:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+            
+            self.square_matrix_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(control_frame, text="Square Aspect Ratio", 
+                           variable=self.square_matrix_var,
+                           command=self._on_correlation_display_change).pack(anchor=tk.W, padx=(10, 0))
+            
+            # Refresh button
+            ttk.Button(control_frame, text="Refresh Plot", width=15,
+                      command=self._update_correlation_plot).pack(pady=(10, 0))
+            
+            logger.info("Correlation control panel created")
+            
+        except Exception as e:
+            logger.error(f"Error creating correlation controls: {e}")
+    
+    def _on_tab_changed(self, event):
+        """Handle tab change event to update current tab."""
+        try:
+            selected_tab = event.widget.tab('current')['text']
+            tab_mapping = {
+                "Parameter Space": "parameter_space",
+                "Response Trends": "trends", 
+                "Parameter Importance": "importance",
+                "Correlation Matrix": "correlation"
+            }
+            self.current_tab = tab_mapping.get(selected_tab, "parameter_space")
+            logger.debug(f"Tab changed to: {self.current_tab}")
+        except Exception as e:
+            logger.error(f"Error handling tab change: {e}")
+    
+    # Control panel event handlers
+    def _on_param_display_change(self):
+        """Handle parameter space display mode change."""
+        logger.debug("Parameter display mode changed")
+        if hasattr(self, 'plot_ax') and self.plot_ax:
+            # Get the current mode
+            mode = "contour"  # Default
+            if hasattr(self, 'param_display_mode') and self.param_display_mode:
+                mode = self.param_display_mode.get()
+                logger.debug(f"Display mode changed to: {mode}")
+            
+            # Update plot title to show current mode (immediate visual feedback)
+            param_names = list(self.params_config.keys())
+            title = f"Parameter Space Exploration - Mode: {mode.capitalize()}"
+            self.plot_ax.set_title(title, fontsize=12, fontweight='bold')
+            
+            # Force canvas redraw for immediate visual feedback
+            if hasattr(self, 'plot_canvas') and self.plot_canvas:
+                self.plot_canvas.draw()
+            
+            # Then update the full plot
+            self._update_contour_plot()
+        else:
+            logger.debug("No plot axis available for parameter display change")
+    
+    def _reset_param_plot_view(self):
+        """Reset parameter space plot view to original bounds."""
+        if hasattr(self, 'plot_ax') and self.plot_ax:
+            self._set_plot_bounds()
+            if hasattr(self, 'plot_canvas') and self.plot_canvas:
+                self.plot_canvas.draw()
+    
+    def _on_axis_param_change(self, event=None):
+        """Handle axis parameter selection change."""
+        logger.debug("Axis parameter selection changed")
+        if hasattr(self, 'plot_ax') and self.plot_ax:
+            # Update axis labels
+            x_param_var = getattr(self, 'x_param_var', None) 
+            y_param_var = getattr(self, 'y_param_var', None)
+            if x_param_var and y_param_var:
+                x_param = x_param_var.get()
+                y_param = y_param_var.get()
+                logger.debug(f"New axis parameters: X={x_param}, Y={y_param}")
+                self.plot_ax.set_xlabel(x_param, fontsize=10)
+                self.plot_ax.set_ylabel(y_param, fontsize=10)
+                
+                # Update title to show new axis selection (immediate visual feedback)
+                title = f"Parameter Space: {x_param} vs {y_param}"
+                self.plot_ax.set_title(title, fontsize=12, fontweight='bold')
+                
+                # Force canvas redraw for immediate visual feedback
+                if hasattr(self, 'plot_canvas') and self.plot_canvas:
+                    self.plot_canvas.draw()
+            
+            # Update plot with new axis parameters
+            self._set_plot_bounds()
+            try:
+                self._update_contour_plot()
+            except Exception as e:
+                logger.error(f"Error updating contour plot: {e}")
+        else:
+            logger.debug("No plot axis available for axis parameter change")
+    
+    def _on_contour_response_change(self, event=None):
+        """Handle contour response selection change."""
+        logger.debug("Contour response selection changed")
+        if hasattr(self, 'plot_ax') and self.plot_ax:
+            try:
+                self._update_contour_plot()
+            except Exception as e:
+                logger.error(f"Error updating contour plot: {e}")
+        else:
+            logger.debug("No plot axis available for contour response change")
+    
+    def _on_trends_response_change(self):
+        """Handle trends response selection change."""
+        logger.debug("Trends response selection changed")
+        try:
+            self._update_trends_plot()
+        except Exception as e:
+            logger.error(f"Error updating trends plot: {e}")
+    
+    def _on_trends_display_change(self):
+        """Handle trends display options change."""
+        logger.debug("Trends display options changed")
+        
+        # Update plot title to show current settings (immediate visual feedback)
+        if hasattr(self, 'trends_ax') and self.trends_ax:
+            show_lines = True
+            if hasattr(self, 'show_trend_lines_var') and self.show_trend_lines_var:
+                show_lines = self.show_trend_lines_var.get()
+            
+            show_smooth = False
+            if hasattr(self, 'smoothing_var') and self.smoothing_var:
+                show_smooth = self.smoothing_var.get()
+            
+            mode_text = []
+            if show_lines:
+                mode_text.append("Lines")
+            if show_smooth:
+                mode_text.append("Smoothed")
+            
+            mode_str = " + ".join(mode_text) if mode_text else "Points Only"
+            title = f"Response Trends Over Time - Mode: {mode_str}"
+            self.trends_ax.set_title(title, fontsize=12, fontweight='bold')
+            
+            # Force canvas redraw for immediate visual feedback
+            if hasattr(self, 'trends_canvas') and self.trends_canvas:
+                self.trends_canvas.draw()
+        
+        try:
+            self._update_trends_plot()
+        except Exception as e:
+            logger.error(f"Error updating trends plot: {e}")
+    
+    def _on_importance_sort_change(self):
+        """Handle importance plot sort option change."""
+        logger.debug("Importance sort option changed")
+        
+        # Update plot title to show current sort mode (immediate visual feedback)
+        if hasattr(self, 'importance_ax') and self.importance_ax:
+            sort_mode = "importance"  # Default
+            if hasattr(self, 'importance_sort_var') and self.importance_sort_var:
+                sort_mode = self.importance_sort_var.get()
+            
+            sort_text = "Importance Score" if sort_mode == "importance" else "Parameter Name"
+            title = f"Parameter Importance Analysis - Sorted by: {sort_text}"
+            self.importance_ax.set_title(title, fontsize=12, fontweight='bold')
+            
+            # Force canvas redraw for immediate visual feedback
+            if hasattr(self, 'importance_canvas') and self.importance_canvas:
+                self.importance_canvas.draw()
+        
+        try:
+            self._update_importance_plot()
+        except Exception as e:
+            logger.error(f"Error updating importance plot: {e}")
+    
+    def _on_importance_threshold_change(self, value):
+        """Handle importance threshold change."""
+        logger.debug(f"Importance threshold changed to: {value}")
+        try:
+            threshold = float(value)
+            self.threshold_label.config(text=f"{threshold:.2f}")
+            self._update_importance_plot()
+        except Exception as e:
+            logger.error(f"Error updating importance plot threshold: {e}")
+    
+    def _on_importance_display_change(self):
+        """Handle importance display options change."""
+        logger.debug("Importance display options changed")
+        try:
+            self._update_importance_plot()
+        except Exception as e:
+            logger.error(f"Error updating importance plot: {e}")
+    
+    def _on_correlation_colormap_change(self):
+        """Handle correlation colormap change."""
+        logger.debug("Correlation colormap changed")
+        
+        # Get the current colormap for immediate feedback
+        cmap_name = 'RdBu_r'  # Default
+        if hasattr(self, 'correlation_colormap_var') and self.correlation_colormap_var:
+            cmap_name = self.correlation_colormap_var.get()
+            logger.debug(f"Colormap changed to: {cmap_name}")
+        
+        # Update plot title to show current colormap (immediate visual feedback)
+        if hasattr(self, 'correlation_ax') and self.correlation_ax:
+            title = f"Parameter-Response Correlation Matrix - Colormap: {cmap_name}"
+            self.correlation_ax.set_title(title, fontsize=12, fontweight='bold')
+            
+            # Force canvas redraw for immediate visual feedback
+            if hasattr(self, 'correlation_canvas') and self.correlation_canvas:
+                self.correlation_canvas.draw()
+        
+        try:
+            self._update_correlation_plot()
+        except Exception as e:
+            logger.error(f"Error updating correlation plot: {e}")
+    
+    def _on_correlation_display_change(self):
+        """Handle correlation display options change."""
+        logger.debug("Correlation display options changed")
+        try:
+            self._update_correlation_plot()
+        except Exception as e:
+            logger.error(f"Error updating correlation plot: {e}")
+    
+    def _on_correlation_threshold_change(self, value):
+        """Handle correlation threshold change."""
+        logger.debug(f"Correlation threshold changed to: {value}")
+        try:
+            threshold = float(value)
+            self.correlation_threshold_label.config(text=f"{threshold:.3f}")
+            self._update_correlation_plot()
+        except Exception as e:
+            logger.error(f"Error updating correlation plot threshold: {e}")
+    
     def _update_contour_plot(self):
         """Update the contour/heatmap showing the response surface."""
         try:
@@ -785,12 +1410,35 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             
             # Get experimental data
             data = self.screening_optimizer.experimental_data
-            x_param = param_names[0]
-            y_param = param_names[1]
             
-            # Get the primary response for visualization
+            # Get axis parameters from controls or defaults
+            x_param = param_names[0]  # Default
+            y_param = param_names[1] if len(param_names) > 1 else param_names[0]  # Default
+            
+            if hasattr(self, 'x_param_var') and self.x_param_var:
+                try:
+                    x_param = self.x_param_var.get()
+                    logger.debug(f"Using X parameter: {x_param}")
+                except Exception as e:
+                    logger.debug(f"Error getting X parameter: {e}")
+            
+            if hasattr(self, 'y_param_var') and self.y_param_var:
+                try:
+                    y_param = self.y_param_var.get()
+                    logger.debug(f"Using Y parameter: {y_param}")
+                except Exception as e:
+                    logger.debug(f"Error getting Y parameter: {e}")
+            
+            # Get the response for visualization from controls or default
             response_names = list(self.responses_config.keys())
-            primary_response = response_names[0]  # Use first response
+            primary_response = response_names[0]  # Default
+            
+            if hasattr(self, 'contour_response_var') and self.contour_response_var:
+                try:
+                    primary_response = self.contour_response_var.get()
+                    logger.debug(f"Using response for contour: {primary_response}")
+                except Exception as e:
+                    logger.debug(f"Error getting contour response: {e}")
             
             if primary_response not in data.columns:
                 logger.warning(f"Response '{primary_response}' not found in data")
@@ -873,42 +1521,67 @@ Max Iterations: {self.config['sglbo_settings'].get('max_iterations', 20)}"""
             # Clear the contour list
             self.current_contours = []
             
-            # Create new contour plot
-            contour_filled = self.plot_ax.contourf(Xi, Yi, Zi, levels=20, alpha=0.6, cmap='viridis')
-            contour_lines = self.plot_ax.contour(Xi, Yi, Zi, levels=10, colors='black', alpha=0.3, linewidths=0.5)
-            
-            # Store references to new contours for cleanup next time
-            self.current_contours = [contour_filled, contour_lines]
-            
-            # Handle colorbar - create only once, then update
-            if not hasattr(self, '_colorbar') or self._colorbar is None:
-                # Create colorbar only on first contour plot
+            # Check display mode from controls
+            mode = "contour"  # Default
+            if hasattr(self, 'param_display_mode') and self.param_display_mode:
                 try:
-                    self._colorbar = self.plot_figure.colorbar(contour_filled, ax=self.plot_ax)
-                    self._colorbar.set_label(f'{primary_response} (Response Values)', rotation=270, labelpad=15)
-                    logger.debug(f"Created initial colorbar for {primary_response}")
+                    mode = self.param_display_mode.get()
+                    logger.debug(f"Using display mode: {mode}")
                 except Exception as e:
-                    logger.warning(f"Could not create colorbar: {e}")
-                    self._colorbar = None
-            else:
-                # Update existing colorbar with new data range
-                try:
-                    # Update colorbar mappable to new contour data
-                    self._colorbar.mappable.set_array(Zi.ravel())
-                    self._colorbar.mappable.set_clim(vmin=Zi.min(), vmax=Zi.max())
-                    self._colorbar.update_normal(self._colorbar.mappable)
-                    logger.debug(f"Updated colorbar range: {Zi.min():.2f} to {Zi.max():.2f}")
-                except Exception as e:
-                    logger.warning(f"Could not update colorbar: {e}")
-                    # Fallback: try to recreate colorbar
+                    logger.debug(f"Error getting display mode: {e}")
+            
+            if mode == "contour":
+                # Create contour plot
+                contour_filled = self.plot_ax.contourf(Xi, Yi, Zi, levels=20, alpha=0.6, cmap='viridis')
+                contour_lines = self.plot_ax.contour(Xi, Yi, Zi, levels=10, colors='black', alpha=0.3, linewidths=0.5)
+                self.current_contours = [contour_filled, contour_lines]
+            elif mode == "heatmap":
+                # Create heatmap
+                heatmap = self.plot_ax.imshow(Zi, extent=[Xi.min(), Xi.max(), Yi.min(), Yi.max()], 
+                                            origin='lower', cmap='viridis', alpha=0.8, aspect='auto')
+                self.current_contours = [heatmap]
+            # For "scatter" mode, we don't add any contour/heatmap, just the scatter points
+            
+            # Handle colorbar - create only if we have contour or heatmap data to show
+            if mode in ["contour", "heatmap"] and self.current_contours:
+                colorbar_mappable = self.current_contours[0]  # Use first contour/heatmap for colorbar
+                
+                if not hasattr(self, '_colorbar') or self._colorbar is None:
+                    # Create colorbar only on first contour/heatmap plot
                     try:
-                        self._colorbar.remove()
-                        self._colorbar = self.plot_figure.colorbar(contour_filled, ax=self.plot_ax)
+                        self._colorbar = self.plot_figure.colorbar(colorbar_mappable, ax=self.plot_ax)
                         self._colorbar.set_label(f'{primary_response} (Response Values)', rotation=270, labelpad=15)
-                        logger.debug("Recreated colorbar as fallback")
-                    except Exception as e2:
-                        logger.error(f"Colorbar fallback failed: {e2}")
+                        logger.debug(f"Created initial colorbar for {primary_response}")
+                    except Exception as e:
+                        logger.warning(f"Could not create colorbar: {e}")
                         self._colorbar = None
+                else:
+                    # Update existing colorbar with new data range
+                    try:
+                        # Update colorbar mappable to new contour data
+                        self._colorbar.mappable.set_array(Zi.ravel())
+                        self._colorbar.mappable.set_clim(vmin=Zi.min(), vmax=Zi.max())
+                        self._colorbar.update_normal(self._colorbar.mappable)
+                        logger.debug(f"Updated colorbar range: {Zi.min():.2f} to {Zi.max():.2f}")
+                    except Exception as e:
+                        logger.warning(f"Could not update colorbar: {e}")
+                        # Fallback: try to recreate colorbar
+                        try:
+                            self._colorbar.remove()
+                            self._colorbar = self.plot_figure.colorbar(colorbar_mappable, ax=self.plot_ax)
+                            self._colorbar.set_label(f'{primary_response} (Response Values)', rotation=270, labelpad=15)
+                            logger.debug("Recreated colorbar as fallback")
+                        except Exception as e2:
+                            logger.error(f"Colorbar fallback failed: {e2}")
+                            self._colorbar = None
+            elif mode == "scatter" and hasattr(self, '_colorbar') and self._colorbar is not None:
+                # Remove colorbar for scatter-only mode
+                try:
+                    self._colorbar.remove()
+                    self._colorbar = None
+                    logger.debug("Removed colorbar for scatter-only mode")
+                except Exception as e:
+                    logger.warning(f"Could not remove colorbar: {e}")
             
             # Refresh the plot
             self.plot_canvas.draw()

@@ -176,8 +176,8 @@ class SimplePlotManager:
         if canvas:
             canvas.draw()
 
-    def create_progress_plot(self, fig, canvas):
-        """Create optimization progress plot"""
+    def create_progress_plot(self, fig, canvas, x_range=None, y_range=None):
+        """Create optimization progress plot with axis range support"""
         fig.clear()
 
         try:
@@ -282,18 +282,35 @@ class SimplePlotManager:
             ax.grid(True, alpha=0.3)
             ax.legend()
 
-            # Dynamically set y-axis limits for better visualization
-            if len(hypervolumes) > 0:
-                min_hypervolume = np.min(hypervolumes)
-                max_hypervolume = np.max(hypervolumes)
-                y_range = max_hypervolume - min_hypervolume
-                if (
-                    y_range == 0
-                ):  # Handle case where all hypervolume values are the same
-                    buffer = 0.1 * abs(min_hypervolume) if min_hypervolume != 0 else 0.1
-                else:
-                    buffer = 0.1 * y_range  # 10% buffer
-                ax.set_ylim(min_hypervolume - buffer, max_hypervolume + buffer)
+            # Apply axis ranges if specified (before dynamic limits)
+            if (
+                x_range
+                and len(x_range) == 2
+                and x_range[0] is not None
+                and x_range[1] is not None
+            ):
+                ax.set_xlim(x_range[0], x_range[1])
+            
+            if (
+                y_range
+                and len(y_range) == 2
+                and y_range[0] is not None
+                and y_range[1] is not None
+            ):
+                ax.set_ylim(y_range[0], y_range[1])
+            else:
+                # Dynamically set y-axis limits for better visualization only if not manually set
+                if len(hypervolumes) > 0:
+                    min_hypervolume = np.min(hypervolumes)
+                    max_hypervolume = np.max(hypervolumes)
+                    y_range_dynamic = max_hypervolume - min_hypervolume
+                    if (
+                        y_range_dynamic == 0
+                    ):  # Handle case where all hypervolume values are the same
+                        buffer = 0.1 * abs(min_hypervolume) if min_hypervolume != 0 else 0.1
+                    else:
+                        buffer = 0.1 * y_range_dynamic  # 10% buffer
+                    ax.set_ylim(min_hypervolume - buffer, max_hypervolume + buffer)
 
             # Add enhanced convergence analysis if available
             convergence_info = None
@@ -362,6 +379,311 @@ class SimplePlotManager:
         if canvas:
             canvas.draw()
 
+    def _validate_acquisition_plot_requirements(self, param1_name, param2_name):
+        """
+        Validate requirements for creating acquisition function plot.
+        
+        Args:
+            param1_name: Name of first parameter
+            param2_name: Name of second parameter
+            
+        Returns:
+            tuple: (is_valid, error_message, param1_config, param2_config)
+        """
+        # Check if we have sufficient data to build models
+        if (
+            not hasattr(self.optimizer, "train_X")
+            or self.optimizer.train_X.shape[0] < 3
+        ):
+            return (
+                False,
+                "Insufficient data for acquisition function visualization.\n\n"
+                "Need at least 3 experimental data points to build GP models.",
+                None,
+                None,
+            )
+
+        # Get parameter configurations
+        param1_config = self.optimizer.params_config.get(param1_name)
+        param2_config = self.optimizer.params_config.get(param2_name)
+
+        if not param1_config or not param2_config:
+            return (
+                False,
+                f"Parameter configuration not found for {param1_name} or {param2_name}",
+                None,
+                None,
+            )
+
+        if (
+            param1_config["type"] != "continuous"
+            or param2_config["type"] != "continuous"
+        ):
+            return (
+                False,
+                "Acquisition function heatmap requires continuous parameters.\n\n"
+                "Please select two continuous parameters.",
+                None,
+                None,
+            )
+
+        return True, None, param1_config, param2_config
+
+    def _setup_acquisition_models(self):
+        """
+        Build GP models and setup acquisition function.
+        
+        Returns:
+            tuple: (success, models, acq_func, error_message)
+        """
+        try:
+            models = self.optimizer._build_models()
+            if models is None:
+                return False, None, None, "Failed to build GP models for acquisition function"
+        except Exception as e:
+            return False, None, None, f"Error building models: {str(e)}"
+
+        try:
+            acq_func = self.optimizer._setup_acquisition_function(models)
+            if acq_func is None:
+                return False, None, None, "Failed to setup acquisition function"
+        except Exception as e:
+            return False, None, None, f"Error setting up acquisition function: {str(e)}"
+
+        return True, models, acq_func, None
+
+    def _generate_acquisition_grid(self, param1_name, param2_name, param1_config, param2_config):
+        """
+        Generate grid for acquisition function evaluation.
+        
+        Args:
+            param1_name: Name of first parameter
+            param2_name: Name of second parameter  
+            param1_config: Configuration for first parameter
+            param2_config: Configuration for second parameter
+            
+        Returns:
+            tuple: (X1, X2, base_params, param1_idx, param2_idx)
+        """
+        # Get parameter bounds in original space
+        param1_bounds = param1_config["bounds"]
+        param2_bounds = param2_config["bounds"]
+
+        # Create grid in original parameter space
+        resolution = 50  # Grid resolution
+        x1 = np.linspace(param1_bounds[0], param1_bounds[1], resolution)
+        x2 = np.linspace(param2_bounds[0], param2_bounds[1], resolution)
+        X1, X2 = np.meshgrid(x1, x2)
+
+        # Get indices of the two parameters in the transformer
+        param1_idx = self.optimizer.parameter_transformer.param_names.index(
+            param1_name
+        )
+        param2_idx = self.optimizer.parameter_transformer.param_names.index(
+            param2_name
+        )
+
+        # Create base point for other parameters (set to middle values)
+        base_params = {}
+        for p_name, p_config in self.optimizer.params_config.items():
+            if p_name not in [param1_name, param2_name]:
+                if p_config["type"] == "continuous":
+                    base_params[p_name] = np.mean(p_config["bounds"])
+                elif p_config["type"] == "discrete":
+                    base_params[p_name] = int(np.mean(p_config["bounds"]))
+                elif p_config["type"] == "categorical":
+                    base_params[p_name] = p_config["values"][0]
+
+        return X1, X2, base_params, param1_idx, param2_idx
+
+    def _evaluate_acquisition_on_grid(self, X1, X2, param1_name, param2_name, base_params, acq_func):
+        """
+        Evaluate acquisition function values on grid points.
+        
+        Args:
+            X1, X2: Mesh grid coordinates
+            param1_name: Name of first parameter
+            param2_name: Name of second parameter
+            base_params: Fixed values for other parameters
+            acq_func: Acquisition function to evaluate
+            
+        Returns:
+            np.ndarray: Acquisition function values on grid
+        """
+        resolution = X1.shape[0]
+        acq_values = np.zeros_like(X1)
+
+        for i in range(resolution):
+            for j in range(resolution):
+                # Create parameter dictionary for this grid point
+                current_params = {
+                    param1_name: X1[i, j],
+                    param2_name: X2[i, j],
+                    **base_params,
+                }
+
+                # Convert to normalized tensor
+                param_tensor = (
+                    self.optimizer.parameter_transformer.params_to_tensor(
+                        current_params
+                    )
+                )
+                param_tensor = param_tensor.unsqueeze(0)  # Add batch dimension
+
+                # Evaluate acquisition function
+                try:
+                    with torch.no_grad():
+                        acq_value = acq_func(param_tensor).item()
+                        acq_values[i, j] = acq_value
+                except Exception as e:
+                    logger.warning(
+                        f"Error evaluating acquisition function at grid point: {e}"
+                    )
+                    acq_values[i, j] = 0.0
+
+        return acq_values
+
+    def _create_acquisition_plot_visualization(self, fig, X1, X2, acq_values, param1_name, param2_name):
+        """
+        Create the main acquisition function visualization.
+        
+        Args:
+            fig: Matplotlib figure
+            X1, X2: Mesh grid coordinates
+            acq_values: Acquisition function values
+            param1_name: Name of first parameter
+            param2_name: Name of second parameter
+            
+        Returns:
+            matplotlib.axes.Axes: The created axes object
+        """
+        ax = fig.add_subplot(111)
+
+        # Create heatmap/contour plot
+        contour = ax.contourf(
+            X1, X2, acq_values, levels=20, cmap="viridis", alpha=0.8
+        )
+        contour_lines = ax.contour(
+            X1, X2, acq_values, levels=10, colors="black", alpha=0.4, linewidths=0.5
+        )
+
+        # Add colorbar
+        cbar = fig.colorbar(contour, ax=ax)
+        cbar.set_label("Acquisition Function Value", fontsize=10, fontweight="bold")
+
+        # Find and mark the maximum acquisition value point
+        max_idx = np.unravel_index(np.argmax(acq_values), acq_values.shape)
+        max_x1, max_x2 = X1[max_idx], X2[max_idx]
+        ax.scatter(
+            max_x1,
+            max_x2,
+            color="red",
+            s=100,
+            marker="*",
+            label=f"Next Suggested Point",
+            edgecolors="white",
+            linewidths=1,
+            zorder=5,
+        )
+
+        # Plot existing experimental points
+        if not self.optimizer.experimental_data.empty:
+            if (
+                param1_name in self.optimizer.experimental_data.columns
+                and param2_name in self.optimizer.experimental_data.columns
+            ):
+                exp_x1 = self.optimizer.experimental_data[param1_name].values
+                exp_x2 = self.optimizer.experimental_data[param2_name].values
+
+                # Filter out NaN values
+                valid_mask = pd.Series(exp_x1).notna() & pd.Series(exp_x2).notna()
+                if valid_mask.any():
+                    ax.scatter(
+                        exp_x1[valid_mask],
+                        exp_x2[valid_mask],
+                        color="white",
+                        s=60,
+                        alpha=0.9,
+                        label="Experimental Data",
+                        edgecolors="black",
+                        linewidths=1,
+                        zorder=4,
+                    )
+
+        return ax
+
+    def _format_acquisition_plot(self, ax, fig, param1_name, param2_name, acq_values, base_params):
+        """
+        Format acquisition function plot with labels, titles, and annotations.
+        
+        Args:
+            ax: Matplotlib axes object
+            fig: Matplotlib figure
+            param1_name: Name of first parameter
+            param2_name: Name of second parameter
+            acq_values: Acquisition function values for statistics
+            base_params: Fixed parameter values to display
+        """
+        # Format plot
+        ax.set_xlabel(param1_name, fontsize=12, fontweight="bold")
+        ax.set_ylabel(param2_name, fontsize=12, fontweight="bold")
+
+        # Determine acquisition function name for title
+        acq_name = "Expected Improvement"
+        if len(self.optimizer.objective_names) > 1:
+            acq_name = "Expected Hypervolume Improvement"
+
+        ax.set_title(
+            f"Acquisition Function Landscape\n{acq_name}",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.legend(loc="best")
+
+        # Add acquisition function statistics
+        max_acq = np.max(acq_values)
+        mean_acq = np.mean(acq_values)
+        std_acq = np.std(acq_values)
+
+        stats_text = f"Max: {max_acq:.3e}\nMean: {mean_acq:.3e}\nStd: {std_acq:.3e}"
+        ax.text(
+            0.02,
+            0.98,
+            stats_text,
+            transform=ax.transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+            fontsize=9,
+        )
+
+        # Add information about fixed parameters
+        if base_params:
+            fixed_text = "Fixed parameters:\n" + "\n".join(
+                (
+                    f"{name}: {value:.3f}"
+                    if isinstance(value, float)
+                    else f"{name}: {value}"
+                )
+                for name, value in list(base_params.items())[
+                    :3
+                ]  # Show first 3 to avoid clutter
+            )
+            if len(base_params) > 3:
+                fixed_text += f"\n... and {len(base_params) - 3} more"
+
+            ax.text(
+                0.98,
+                0.02,
+                fixed_text,
+                transform=ax.transAxes,
+                verticalalignment="bottom",
+                horizontalalignment="right",
+                bbox=dict(boxstyle="round", facecolor="lightgray", alpha=0.7),
+                fontsize=8,
+            )
+
+        fig.tight_layout()
+
     def create_acquisition_function_plot(
         self, fig, canvas, param1_name, param2_name, acq_function_type="EI"
     ):
@@ -381,251 +703,44 @@ class SimplePlotManager:
         fig.clear()
 
         try:
-            # Check if we have sufficient data to build models
-            if (
-                not hasattr(self.optimizer, "train_X")
-                or self.optimizer.train_X.shape[0] < 3
-            ):
-                self._plot_message(
-                    fig,
-                    "Insufficient data for acquisition function visualization.\n\n"
-                    "Need at least 3 experimental data points to build GP models.",
-                )
+            # Validate requirements and get parameter configurations
+            is_valid, error_msg, param1_config, param2_config = self._validate_acquisition_plot_requirements(
+                param1_name, param2_name
+            )
+            
+            if not is_valid:
+                self._plot_message(fig, error_msg)
                 if canvas:
                     canvas.draw()
                 return
 
-            # Get parameter configurations
-            param1_config = self.optimizer.params_config.get(param1_name)
-            param2_config = self.optimizer.params_config.get(param2_name)
-
-            if not param1_config or not param2_config:
-                self._plot_message(
-                    fig,
-                    f"Parameter configuration not found for {param1_name} or {param2_name}",
-                )
+            # Setup models and acquisition function
+            success, models, acq_func, error_msg = self._setup_acquisition_models()
+            if not success:
+                self._plot_message(fig, error_msg)
                 if canvas:
                     canvas.draw()
                 return
 
-            if (
-                param1_config["type"] != "continuous"
-                or param2_config["type"] != "continuous"
-            ):
-                self._plot_message(
-                    fig,
-                    "Acquisition function heatmap requires continuous parameters.\n\n"
-                    "Please select two continuous parameters.",
-                )
-                if canvas:
-                    canvas.draw()
-                return
-
-            # Build models
-            try:
-                models = self.optimizer._build_models()
-                if models is None:
-                    self._plot_message(
-                        fig, "Failed to build GP models for acquisition function"
-                    )
-                    if canvas:
-                        canvas.draw()
-                    return
-            except Exception as e:
-                self._plot_message(fig, f"Error building models: {str(e)}")
-                if canvas:
-                    canvas.draw()
-                return
-
-            # Set up acquisition function
-            try:
-                acq_func = self.optimizer._setup_acquisition_function(models)
-                if acq_func is None:
-                    self._plot_message(fig, "Failed to setup acquisition function")
-                    if canvas:
-                        canvas.draw()
-                    return
-            except Exception as e:
-                self._plot_message(
-                    fig, f"Error setting up acquisition function: {str(e)}"
-                )
-                if canvas:
-                    canvas.draw()
-                return
-
-            # Get parameter bounds in original space
-            param1_bounds = param1_config["bounds"]
-            param2_bounds = param2_config["bounds"]
-
-            # Create grid in original parameter space
-            resolution = 50  # Grid resolution
-            x1 = np.linspace(param1_bounds[0], param1_bounds[1], resolution)
-            x2 = np.linspace(param2_bounds[0], param2_bounds[1], resolution)
-            X1, X2 = np.meshgrid(x1, x2)
-
-            # Get indices of the two parameters in the transformer
-            param1_idx = self.optimizer.parameter_transformer.param_names.index(
-                param1_name
-            )
-            param2_idx = self.optimizer.parameter_transformer.param_names.index(
-                param2_name
+            # Generate grid for evaluation
+            X1, X2, base_params, param1_idx, param2_idx = self._generate_acquisition_grid(
+                param1_name, param2_name, param1_config, param2_config
             )
 
-            # Create base point for other parameters (set to middle values)
-            base_params = {}
-            for p_name, p_config in self.optimizer.params_config.items():
-                if p_name not in [param1_name, param2_name]:
-                    if p_config["type"] == "continuous":
-                        base_params[p_name] = np.mean(p_config["bounds"])
-                    elif p_config["type"] == "discrete":
-                        base_params[p_name] = int(np.mean(p_config["bounds"]))
-                    elif p_config["type"] == "categorical":
-                        base_params[p_name] = p_config["values"][0]
-
-            # Evaluate acquisition function on the grid
-            acq_values = np.zeros_like(X1)
-
-            for i in range(resolution):
-                for j in range(resolution):
-                    # Create parameter dictionary for this grid point
-                    current_params = {
-                        param1_name: X1[i, j],
-                        param2_name: X2[i, j],
-                        **base_params,
-                    }
-
-                    # Convert to normalized tensor
-                    param_tensor = (
-                        self.optimizer.parameter_transformer.params_to_tensor(
-                            current_params
-                        )
-                    )
-                    param_tensor = param_tensor.unsqueeze(0)  # Add batch dimension
-
-                    # Evaluate acquisition function
-                    try:
-                        with torch.no_grad():
-                            acq_value = acq_func(param_tensor).item()
-                            acq_values[i, j] = acq_value
-                    except Exception as e:
-                        logger.warning(
-                            f"Error evaluating acquisition function at grid point: {e}"
-                        )
-                        acq_values[i, j] = 0.0
-
-            # Create the plot
-            ax = fig.add_subplot(111)
-
-            # Create heatmap/contour plot
-            contour = ax.contourf(
-                X1, X2, acq_values, levels=20, cmap="viridis", alpha=0.8
-            )
-            contour_lines = ax.contour(
-                X1, X2, acq_values, levels=10, colors="black", alpha=0.4, linewidths=0.5
+            # Evaluate acquisition function on grid
+            acq_values = self._evaluate_acquisition_on_grid(
+                X1, X2, param1_name, param2_name, base_params, acq_func
             )
 
-            # Add colorbar
-            cbar = fig.colorbar(contour, ax=ax)
-            cbar.set_label("Acquisition Function Value", fontsize=10, fontweight="bold")
-
-            # Find and mark the maximum acquisition value point
-            max_idx = np.unravel_index(np.argmax(acq_values), acq_values.shape)
-            max_x1, max_x2 = X1[max_idx], X2[max_idx]
-            ax.scatter(
-                max_x1,
-                max_x2,
-                color="red",
-                s=100,
-                marker="*",
-                label=f"Next Suggested Point",
-                edgecolors="white",
-                linewidths=1,
-                zorder=5,
+            # Create visualization
+            ax = self._create_acquisition_plot_visualization(
+                fig, X1, X2, acq_values, param1_name, param2_name
             )
 
-            # Plot existing experimental points
-            if not self.optimizer.experimental_data.empty:
-                if (
-                    param1_name in self.optimizer.experimental_data.columns
-                    and param2_name in self.optimizer.experimental_data.columns
-                ):
-                    exp_x1 = self.optimizer.experimental_data[param1_name].values
-                    exp_x2 = self.optimizer.experimental_data[param2_name].values
-
-                    # Filter out NaN values
-                    valid_mask = pd.Series(exp_x1).notna() & pd.Series(exp_x2).notna()
-                    if valid_mask.any():
-                        ax.scatter(
-                            exp_x1[valid_mask],
-                            exp_x2[valid_mask],
-                            color="white",
-                            s=60,
-                            alpha=0.9,
-                            label="Experimental Data",
-                            edgecolors="black",
-                            linewidths=1,
-                            zorder=4,
-                        )
-
-            # Format plot
-            ax.set_xlabel(param1_name, fontsize=12, fontweight="bold")
-            ax.set_ylabel(param2_name, fontsize=12, fontweight="bold")
-
-            # Determine acquisition function name for title
-            acq_name = "Expected Improvement"
-            if len(self.optimizer.objective_names) > 1:
-                acq_name = "Expected Hypervolume Improvement"
-
-            ax.set_title(
-                f"Acquisition Function Landscape\n{acq_name}",
-                fontsize=14,
-                fontweight="bold",
+            # Format plot with labels and annotations
+            self._format_acquisition_plot(
+                ax, fig, param1_name, param2_name, acq_values, base_params
             )
-            ax.legend(loc="best")
-
-            # Add acquisition function statistics
-            max_acq = np.max(acq_values)
-            mean_acq = np.mean(acq_values)
-            std_acq = np.std(acq_values)
-
-            stats_text = f"Max: {max_acq:.3e}\nMean: {mean_acq:.3e}\nStd: {std_acq:.3e}"
-            ax.text(
-                0.02,
-                0.98,
-                stats_text,
-                transform=ax.transAxes,
-                verticalalignment="top",
-                bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
-                fontsize=9,
-            )
-
-            # Add information about fixed parameters
-            if base_params:
-                fixed_text = "Fixed parameters:\n" + "\n".join(
-                    (
-                        f"{name}: {value:.3f}"
-                        if isinstance(value, float)
-                        else f"{name}: {value}"
-                    )
-                    for name, value in list(base_params.items())[
-                        :3
-                    ]  # Show first 3 to avoid clutter
-                )
-                if len(base_params) > 3:
-                    fixed_text += f"\n... and {len(base_params) - 3} more"
-
-                ax.text(
-                    0.98,
-                    0.02,
-                    fixed_text,
-                    transform=ax.transAxes,
-                    verticalalignment="bottom",
-                    horizontalalignment="right",
-                    bbox=dict(boxstyle="round", facecolor="lightgray", alpha=0.7),
-                    fontsize=8,
-                )
-
-            fig.tight_layout()
 
         except Exception as e:
             logger.error(f"Error creating acquisition function plot: {e}")
@@ -2010,281 +2125,351 @@ class SimplePlotManager:
         if canvas:
             canvas.draw()
 
+    def _prepare_model_analysis_data(self, response_name):
+        """
+        Prepare and validate data for model analysis plots.
+        
+        Args:
+            response_name: Name of the response to analyze
+            
+        Returns:
+            tuple: (model, actual_values, predicted_values, uncertainties) if successful, None if validation fails
+        """
+        # Get response models
+        models = self.optimizer.get_response_models()
+
+        if response_name not in models:
+            return None, f"Model for {response_name} not available.\n\nThis usually means insufficient data."
+
+        model = models[response_name]
+        exp_data = self.optimizer.experimental_data
+
+        if exp_data.empty or response_name not in exp_data.columns:
+            return None, "No experimental data available for model analysis"
+
+        # Get actual values and predictions
+        actual_values = []
+        predicted_values = []
+        uncertainties = []
+
+        for _, row in exp_data.iterrows():
+            try:
+                # Get parameter values - ensure all required parameters are present
+                param_dict = {}
+                missing_params = []
+
+                for param_name in self.optimizer.parameter_transformer.param_names:
+                    if param_name in row and pd.notna(row[param_name]):
+                        param_dict[param_name] = row[param_name]
+                    else:
+                        missing_params.append(param_name)
+
+                # Skip row if missing critical parameters
+                if missing_params:
+                    logger.debug(
+                        f"Skipping row due to missing parameters: {missing_params}"
+                    )
+                    continue
+
+                # Get actual response value
+                if response_name not in row or pd.isna(row[response_name]):
+                    continue
+
+                actual_val = row[response_name]
+                if isinstance(actual_val, list) and actual_val:
+                    actual_val = np.mean([x for x in actual_val if not pd.isna(x)])
+                elif not isinstance(actual_val, (int, float)) or pd.isna(
+                    actual_val
+                ):
+                    continue
+
+                # Ensure actual value is finite
+                if not np.isfinite(actual_val):
+                    continue
+
+                # Get model prediction
+                param_tensor = (
+                    self.optimizer.parameter_transformer.params_to_tensor(
+                        param_dict
+                    ).unsqueeze(0)
+                )
+
+                with torch.no_grad():
+                    posterior = model.posterior(param_tensor)
+                    pred_val = posterior.mean.item()
+                    uncertainty = posterior.variance.sqrt().item()
+
+                # Ensure predictions are finite
+                if not (np.isfinite(pred_val) and np.isfinite(uncertainty)):
+                    logger.debug(
+                        f"Skipping row due to non-finite predictions: pred={pred_val}, unc={uncertainty}"
+                    )
+                    continue
+
+                actual_values.append(actual_val)
+                predicted_values.append(pred_val)
+                uncertainties.append(uncertainty)
+
+            except Exception as e:
+                logger.debug(f"Error processing row for model analysis: {e}")
+                continue
+
+        if not actual_values:
+            return None, "No valid data points for model analysis"
+
+        return (
+            model, 
+            np.array(actual_values), 
+            np.array(predicted_values), 
+            np.array(uncertainties)
+        )
+
+    def _create_residuals_plot(self, ax, actual_values, predicted_values, response_name):
+        """
+        Create a residuals plot for model analysis.
+        
+        Args:
+            ax: Matplotlib axis object
+            actual_values: Array of actual response values
+            predicted_values: Array of predicted response values
+            response_name: Name of the response being analyzed
+        """
+        residuals = actual_values - predicted_values
+        ax.scatter(predicted_values, residuals, alpha=0.6, s=50)
+        ax.axhline(y=0, color="r", linestyle="--", alpha=0.8)
+        ax.set_xlabel("Predicted Values", fontsize=12, fontweight="bold")
+        ax.set_ylabel("Residuals", fontsize=12, fontweight="bold")
+        ax.set_title(
+            f"Residuals Plot - {response_name}", fontsize=14, fontweight="bold"
+        )
+
+        # Add statistics
+        rmse = np.sqrt(mean_squared_error(actual_values, predicted_values))
+        mae = mean_absolute_error(actual_values, predicted_values)
+        r2 = r2_score(actual_values, predicted_values)
+
+        stats_text = f"RMSE: {rmse:.3f}\nMAE: {mae:.3f}\nR²: {r2:.3f}"
+        ax.text(
+            0.02,
+            0.98,
+            stats_text,
+            transform=ax.transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
+        )
+
+    def _create_predictions_plot(self, ax, actual_values, predicted_values, response_name):
+        """
+        Create a predicted vs actual plot for model analysis.
+        
+        Args:
+            ax: Matplotlib axis object
+            actual_values: Array of actual response values
+            predicted_values: Array of predicted response values
+            response_name: Name of the response being analyzed
+        """
+        ax.scatter(actual_values, predicted_values, alpha=0.6, s=50)
+
+        # Perfect prediction line
+        min_val = min(np.min(actual_values), np.min(predicted_values))
+        max_val = max(np.max(actual_values), np.max(predicted_values))
+        ax.plot(
+            [min_val, max_val],
+            [min_val, max_val],
+            "r--",
+            alpha=0.8,
+            label="Perfect Prediction",
+        )
+
+        ax.set_xlabel("Actual Values", fontsize=12, fontweight="bold")
+        ax.set_ylabel("Predicted Values", fontsize=12, fontweight="bold")
+        ax.set_title(
+            f"Predicted vs Actual - {response_name}",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.legend()
+
+    def _create_uncertainty_plot(self, ax, actual_values, predicted_values, uncertainties, response_name):
+        """
+        Create an uncertainty plot for model analysis.
+        
+        Args:
+            ax: Matplotlib axis object
+            actual_values: Array of actual response values
+            predicted_values: Array of predicted response values
+            uncertainties: Array of prediction uncertainties
+            response_name: Name of the response being analyzed
+        """
+        ax.errorbar(
+            range(len(predicted_values)),
+            predicted_values,
+            yerr=uncertainties,
+            fmt="o",
+            alpha=0.6,
+            capsize=5,
+            label="Predictions \u00b1 Uncertainty",
+        )
+        ax.scatter(
+            range(len(actual_values)),
+            actual_values,
+            color="red",
+            alpha=0.8,
+            label="Actual Values",
+        )
+        ax.set_xlabel("Data Point Index", fontsize=12, fontweight="bold")
+        ax.set_ylabel(f"{response_name} Value", fontsize=12, fontweight="bold")
+        ax.set_title(
+            f"Model Uncertainty - {response_name}",
+            fontsize=14,
+            fontweight="bold",
+        )
+        ax.legend()
+
+    def _create_feature_importance_plot(self, fig, ax, model, response_name):
+        """
+        Create a feature importance plot for model analysis.
+        
+        Args:
+            fig: Matplotlib figure object (for error messages)
+            ax: Matplotlib axis object
+            model: The trained model for predictions
+            response_name: Name of the response being analyzed
+            
+        Returns:
+            bool: True if successful, False if failed
+        """
+        # Simple feature importance based on parameter sensitivity
+        param_names = list(self.optimizer.params_config.keys())
+        importances = []
+
+        try:
+            for param_name in param_names:
+                # Calculate variance in predictions when varying this parameter
+                param_config = self.optimizer.params_config[param_name]
+
+                if param_config["type"] == "continuous":
+                    bounds = param_config["bounds"]
+                    test_values = np.linspace(bounds[0], bounds[1], 10)
+
+                    # Use mean values for other parameters
+                    base_params = {}
+                    for (
+                        p_name,
+                        p_config,
+                    ) in self.optimizer.params_config.items():
+                        if p_name != param_name:
+                            if p_config["type"] == "continuous":
+                                base_params[p_name] = np.mean(
+                                    p_config["bounds"]
+                                )
+                            elif p_config["type"] == "discrete":
+                                base_params[p_name] = int(
+                                    np.mean(p_config["bounds"])
+                                )
+                            elif p_config["type"] == "categorical":
+                                base_params[p_name] = p_config["values"][0]
+
+                    predictions = []
+                    for val in test_values:
+                        try:
+                            test_params = {param_name: val, **base_params}
+                            param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
+                                test_params
+                            ).unsqueeze(
+                                0
+                            )
+                            with torch.no_grad():
+                                posterior = model.posterior(param_tensor)
+                                pred_val = posterior.mean.item()
+                                if np.isfinite(pred_val):
+                                    predictions.append(pred_val)
+                        except Exception as e:
+                            logger.debug(
+                                f"Error in feature importance calculation for {param_name}: {e}"
+                            )
+                            continue
+
+                    if len(predictions) > 1:
+                        importance = np.var(predictions)
+                    else:
+                        importance = 0.0
+                    importances.append(importance)
+                else:
+                    importances.append(0)  # For non-continuous parameters
+
+            # Normalize importances safely
+            max_importance = max(importances) if importances else 0
+            if max_importance > 0:
+                importances = [imp / max_importance for imp in importances]
+
+            if not importances or all(imp == 0 for imp in importances):
+                self._plot_message(
+                    fig,
+                    "Unable to calculate feature importance - insufficient variation in predictions",
+                )
+                return False
+
+            ax.barh(param_names, importances)
+            ax.set_xlabel("Relative Importance", fontsize=12, fontweight="bold")
+            ax.set_title(
+                f"Feature Importance - {response_name}",
+                fontsize=14,
+                fontweight="bold",
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Error calculating feature importance: {e}")
+            self._plot_message(
+                fig, f"Feature importance calculation failed: {str(e)}"
+            )
+            return False
+
     def create_model_analysis_plot(self, fig, canvas, response_name, analysis_type):
-        """Create Model Analysis plot"""
+        """
+        Create Model Analysis plot using appropriate plot type.
+        
+        Args:
+            fig: Matplotlib figure object
+            canvas: Canvas for drawing (optional)
+            response_name: Name of the response to analyze
+            analysis_type: Type of analysis ('residuals', 'predictions', 'uncertainty', 'feature_importance')
+        """
         fig.clear()
 
         try:
-            # Get response models
-            models = self.optimizer.get_response_models()
-
-            if response_name not in models:
-                self._plot_message(
-                    fig,
-                    f"Model for {response_name} not available.\n\nThis usually means insufficient data.",
-                )
+            # Prepare data for analysis
+            result = self._prepare_model_analysis_data(response_name)
+            
+            if result[0] is None:
+                # Error occurred during data preparation
+                self._plot_message(fig, result[1])
                 if canvas:
                     canvas.draw()
                 return
 
-            model = models[response_name]
-            exp_data = self.optimizer.experimental_data
-
-            if exp_data.empty or response_name not in exp_data.columns:
-                self._plot_message(
-                    fig, "No experimental data available for model analysis"
-                )
-                if canvas:
-                    canvas.draw()
-                return
-
-            # Get actual values and predictions
-            actual_values = []
-            predicted_values = []
-            uncertainties = []
-
-            for _, row in exp_data.iterrows():
-                try:
-                    # Get parameter values - ensure all required parameters are present
-                    param_dict = {}
-                    missing_params = []
-
-                    for param_name in self.optimizer.parameter_transformer.param_names:
-                        if param_name in row and pd.notna(row[param_name]):
-                            param_dict[param_name] = row[param_name]
-                        else:
-                            missing_params.append(param_name)
-
-                    # Skip row if missing critical parameters
-                    if missing_params:
-                        logger.debug(
-                            f"Skipping row due to missing parameters: {missing_params}"
-                        )
-                        continue
-
-                    # Get actual response value
-                    if response_name not in row or pd.isna(row[response_name]):
-                        continue
-
-                    actual_val = row[response_name]
-                    if isinstance(actual_val, list) and actual_val:
-                        actual_val = np.mean([x for x in actual_val if not pd.isna(x)])
-                    elif not isinstance(actual_val, (int, float)) or pd.isna(
-                        actual_val
-                    ):
-                        continue
-
-                    # Ensure actual value is finite
-                    if not np.isfinite(actual_val):
-                        continue
-
-                    # Get model prediction
-                    param_tensor = (
-                        self.optimizer.parameter_transformer.params_to_tensor(
-                            param_dict
-                        ).unsqueeze(0)
-                    )
-
-                    with torch.no_grad():
-                        posterior = model.posterior(param_tensor)
-                        pred_val = posterior.mean.item()
-                        uncertainty = posterior.variance.sqrt().item()
-
-                    # Ensure predictions are finite
-                    if not (np.isfinite(pred_val) and np.isfinite(uncertainty)):
-                        logger.debug(
-                            f"Skipping row due to non-finite predictions: pred={pred_val}, unc={uncertainty}"
-                        )
-                        continue
-
-                    actual_values.append(actual_val)
-                    predicted_values.append(pred_val)
-                    uncertainties.append(uncertainty)
-
-                except Exception as e:
-                    logger.debug(f"Error processing row for model analysis: {e}")
-                    continue
-
-            if not actual_values:
-                self._plot_message(fig, "No valid data points for model analysis")
-                if canvas:
-                    canvas.draw()
-                return
-
-            actual_values = np.array(actual_values)
-            predicted_values = np.array(predicted_values)
-            uncertainties = np.array(uncertainties)
-
+            model, actual_values, predicted_values, uncertainties = result
             ax = fig.add_subplot(111)
 
+            # Create appropriate plot based on analysis type
             if analysis_type == "residuals":
-                # Residuals plot
-                residuals = actual_values - predicted_values
-                ax.scatter(predicted_values, residuals, alpha=0.6, s=50)
-                ax.axhline(y=0, color="r", linestyle="--", alpha=0.8)
-                ax.set_xlabel("Predicted Values", fontsize=12, fontweight="bold")
-                ax.set_ylabel("Residuals", fontsize=12, fontweight="bold")
-                ax.set_title(
-                    f"Residuals Plot - {response_name}", fontsize=14, fontweight="bold"
-                )
-
-                # Add statistics
-                rmse = np.sqrt(mean_squared_error(actual_values, predicted_values))
-                mae = mean_absolute_error(actual_values, predicted_values)
-                r2 = r2_score(actual_values, predicted_values)
-
-                stats_text = f"RMSE: {rmse:.3f}\nMAE: {mae:.3f}\nR²: {r2:.3f}"
-                ax.text(
-                    0.02,
-                    0.98,
-                    stats_text,
-                    transform=ax.transAxes,
-                    verticalalignment="top",
-                    bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
-                )
-
+                self._create_residuals_plot(ax, actual_values, predicted_values, response_name)
+                
             elif analysis_type == "predictions":
-                # Predicted vs Actual plot
-                ax.scatter(actual_values, predicted_values, alpha=0.6, s=50)
-
-                # Perfect prediction line
-                min_val = min(np.min(actual_values), np.min(predicted_values))
-                max_val = max(np.max(actual_values), np.max(predicted_values))
-                ax.plot(
-                    [min_val, max_val],
-                    [min_val, max_val],
-                    "r--",
-                    alpha=0.8,
-                    label="Perfect Prediction",
-                )
-
-                ax.set_xlabel("Actual Values", fontsize=12, fontweight="bold")
-                ax.set_ylabel("Predicted Values", fontsize=12, fontweight="bold")
-                ax.set_title(
-                    f"Predicted vs Actual - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
-                )
-                ax.legend()
-
+                self._create_predictions_plot(ax, actual_values, predicted_values, response_name)
+                
             elif analysis_type == "uncertainty":
-                # Uncertainty plot
-                ax.errorbar(
-                    range(len(predicted_values)),
-                    predicted_values,
-                    yerr=uncertainties,
-                    fmt="o",
-                    alpha=0.6,
-                    capsize=5,
-                    label="Predictions \u00b1 Uncertainty",
-                )
-                ax.scatter(
-                    range(len(actual_values)),
-                    actual_values,
-                    color="red",
-                    alpha=0.8,
-                    label="Actual Values",
-                )
-                ax.set_xlabel("Data Point Index", fontsize=12, fontweight="bold")
-                ax.set_ylabel(f"{response_name} Value", fontsize=12, fontweight="bold")
-                ax.set_title(
-                    f"Model Uncertainty - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
-                )
-                ax.legend()
-
+                self._create_uncertainty_plot(ax, actual_values, predicted_values, uncertainties, response_name)
+                
             elif analysis_type == "feature_importance":
-                # Simple feature importance based on parameter sensitivity
-                param_names = list(self.optimizer.params_config.keys())
-                importances = []
-
-                try:
-                    for param_name in param_names:
-                        # Calculate variance in predictions when varying this parameter
-                        param_config = self.optimizer.params_config[param_name]
-
-                        if param_config["type"] == "continuous":
-                            bounds = param_config["bounds"]
-                            test_values = np.linspace(bounds[0], bounds[1], 10)
-
-                            # Use mean values for other parameters
-                            base_params = {}
-                            for (
-                                p_name,
-                                p_config,
-                            ) in self.optimizer.params_config.items():
-                                if p_name != param_name:
-                                    if p_config["type"] == "continuous":
-                                        base_params[p_name] = np.mean(
-                                            p_config["bounds"]
-                                        )
-                                    elif p_config["type"] == "discrete":
-                                        base_params[p_name] = int(
-                                            np.mean(p_config["bounds"])
-                                        )
-                                    elif p_config["type"] == "categorical":
-                                        base_params[p_name] = p_config["values"][0]
-
-                            predictions = []
-                            for val in test_values:
-                                try:
-                                    test_params = {param_name: val, **base_params}
-                                    param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
-                                        test_params
-                                    ).unsqueeze(
-                                        0
-                                    )
-                                    with torch.no_grad():
-                                        posterior = model.posterior(param_tensor)
-                                        pred_val = posterior.mean.item()
-                                        if np.isfinite(pred_val):
-                                            predictions.append(pred_val)
-                                except Exception as e:
-                                    logger.debug(
-                                        f"Error in feature importance calculation for {param_name}: {e}"
-                                    )
-                                    continue
-
-                            if len(predictions) > 1:
-                                importance = np.var(predictions)
-                            else:
-                                importance = 0.0
-                            importances.append(importance)
-                        else:
-                            importances.append(0)  # For non-continuous parameters
-
-                    # Normalize importances safely
-                    max_importance = max(importances) if importances else 0
-                    if max_importance > 0:
-                        importances = [imp / max_importance for imp in importances]
-
-                    if not importances or all(imp == 0 for imp in importances):
-                        self._plot_message(
-                            fig,
-                            "Unable to calculate feature importance - insufficient variation in predictions",
-                        )
-                        if canvas:
-                            canvas.draw()
-                        return
-
-                    ax.barh(param_names, importances)
-                    ax.set_xlabel("Relative Importance", fontsize=12, fontweight="bold")
-                    ax.set_title(
-                        f"Feature Importance - {response_name}",
-                        fontsize=14,
-                        fontweight="bold",
-                    )
-
-                except Exception as e:
-                    logger.error(f"Error calculating feature importance: {e}")
-                    self._plot_message(
-                        fig, f"Feature importance calculation failed: {str(e)}"
-                    )
+                success = self._create_feature_importance_plot(fig, ax, model, response_name)
+                if not success:
                     if canvas:
                         canvas.draw()
                     return
 
+            # Apply common formatting
             ax.grid(True, alpha=0.3)
             fig.tight_layout()
 
@@ -2295,6 +2480,669 @@ class SimplePlotManager:
         if canvas:
             canvas.draw()
 
+    def _setup_sensitivity_analysis_base(self, fig, response_name):
+        """
+        Setup and validate parameters for sensitivity analysis.
+        
+        Args:
+            fig: Matplotlib figure object
+            response_name: Name of the response to analyze
+            
+        Returns:
+            tuple: (model, continuous_params, param_bounds, ax) if successful, None if validation fails
+        """
+        # Get response models
+        models = self.optimizer.get_response_models()
+
+        if response_name not in models:
+            self._plot_message(
+                fig,
+                f"Model for {response_name} not available.\n\nThis usually means insufficient data.",
+            )
+            return None
+
+        model = models[response_name]
+
+        # Get parameter information
+        param_names = list(self.optimizer.params_config.keys())
+        continuous_params = []
+        param_bounds = []
+
+        for param_name in param_names:
+            param_config = self.optimizer.params_config[param_name]
+            if param_config["type"] == "continuous":
+                continuous_params.append(param_name)
+                param_bounds.append(param_config["bounds"])
+
+        if len(continuous_params) < 1:
+            self._plot_message(
+                fig, "Need at least 1 continuous parameter for sensitivity analysis"
+            )
+            return None
+
+        ax = fig.add_subplot(111)
+        return model, continuous_params, param_bounds, ax
+
+    def _calculate_sobol_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+        """
+        Calculate Sobol-like sensitivity indices.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: List of parameter bounds
+            n_samples: Number of samples for analysis
+            
+        Returns:
+            tuple: (sensitivities, errors) - normalized sensitivity indices and error estimates
+        """
+        sensitivities = []
+        errors = []
+
+        for i, param_name in enumerate(continuous_params):
+            # Multiple runs for statistical significance
+            runs = []
+            for run in range(10):  # 10 bootstrap runs
+                # Generate samples varying this parameter while keeping others fixed
+                bounds = param_bounds[i]
+                param_values = np.linspace(
+                    bounds[0], bounds[1], min(n_samples // 10, 50)
+                )
+
+                # Use mean values for other parameters
+                base_params = {}
+                for j, other_param in enumerate(continuous_params):
+                    if other_param != param_name:
+                        other_bounds = param_bounds[j]
+                        base_params[other_param] = np.mean(other_bounds)
+
+                # Add non-continuous parameters
+                for p_name, p_config in self.optimizer.params_config.items():
+                    if p_name not in continuous_params:
+                        if p_config["type"] == "discrete":
+                            base_params[p_name] = int(
+                                np.mean(p_config["bounds"])
+                            )
+                        elif p_config["type"] == "categorical":
+                            base_params[p_name] = p_config["values"][0]
+
+                predictions = []
+                for val in param_values:
+                    test_params = {param_name: val, **base_params}
+                    param_tensor = (
+                        self.optimizer.parameter_transformer.params_to_tensor(
+                            test_params
+                        ).unsqueeze(0)
+                    )
+                    with torch.no_grad():
+                        posterior = model.posterior(param_tensor)
+                        predictions.append(posterior.mean.item())
+
+                # Calculate sensitivity as variance
+                sensitivity = np.var(predictions)
+                runs.append(sensitivity)
+
+            # Calculate mean and standard error across runs
+            if runs:
+                mean_sensitivity = np.mean(runs)
+                std_error = np.std(runs) / np.sqrt(len(runs))
+            else:
+                mean_sensitivity = 0.0
+                std_error = 0.0
+            
+            sensitivities.append(mean_sensitivity)
+            errors.append(std_error)
+
+        # Normalize sensitivities
+        if max(sensitivities) > 0:
+            norm_factor = sum(sensitivities)
+            sensitivities = [s / norm_factor for s in sensitivities]
+            errors = [e / norm_factor for e in errors]
+
+        return sensitivities, errors
+
+    def _calculate_morris_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+        """
+        Calculate Morris elementary effects with error bars.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: List of parameter bounds
+            n_samples: Number of samples for analysis
+            
+        Returns:
+            tuple: (effects, errors) - normalized elementary effects and error estimates
+        """
+        effects = []
+        errors = []
+
+        for param_name in continuous_params:
+            param_idx = continuous_params.index(param_name)
+            bounds = param_bounds[param_idx]
+
+            # Generate random trajectories
+            n_trajectories = min(
+                50, n_samples // 5
+            )  # More trajectories for better statistics
+            elementary_effects = []
+
+            for _ in range(n_trajectories):
+                # Random starting point
+                base_point = {}
+                for j, p_name in enumerate(continuous_params):
+                    p_bounds = param_bounds[j]
+                    base_point[p_name] = np.random.uniform(
+                        p_bounds[0], p_bounds[1]
+                    )
+
+                # Add non-continuous parameters
+                for p_name, p_config in self.optimizer.params_config.items():
+                    if p_name not in continuous_params:
+                        if p_config["type"] == "discrete":
+                            base_point[p_name] = int(
+                                np.mean(p_config["bounds"])
+                            )
+                        elif p_config["type"] == "categorical":
+                            base_point[p_name] = p_config["values"][0]
+
+                try:
+                    # Evaluate at base point
+                    param_tensor1 = (
+                        self.optimizer.parameter_transformer.params_to_tensor(
+                            base_point
+                        ).unsqueeze(0)
+                    )
+                    with torch.no_grad():
+                        y1 = model.posterior(param_tensor1).mean.item()
+
+                    # Perturb parameter
+                    delta = (
+                        bounds[1] - bounds[0]
+                    ) * 0.05  # 5% of range for more precise estimation
+                    perturbed_point = base_point.copy()
+                    perturbed_point[param_name] = min(
+                        bounds[1], base_point[param_name] + delta
+                    )
+
+                    # Evaluate at perturbed point
+                    param_tensor2 = (
+                        self.optimizer.parameter_transformer.params_to_tensor(
+                            perturbed_point
+                        ).unsqueeze(0)
+                    )
+                    with torch.no_grad():
+                        y2 = model.posterior(param_tensor2).mean.item()
+
+                    # Elementary effect
+                    if delta > 0 and np.isfinite(y1) and np.isfinite(y2):
+                        effect = abs(y2 - y1) / delta
+                        elementary_effects.append(effect)
+                except Exception as e:
+                    logger.debug(
+                        f"Error in Morris method trajectory for {param_name}: {e}"
+                    )
+                    continue
+
+            # Mean elementary effect and standard error
+            if elementary_effects:
+                mean_effect = np.mean(elementary_effects)
+                std_error = np.std(elementary_effects) / np.sqrt(
+                    len(elementary_effects)
+                )
+            else:
+                mean_effect = 0.0
+                std_error = 0.0
+            effects.append(mean_effect)
+            errors.append(std_error)
+
+        # Normalize effects and errors
+        if max(effects) > 0:
+            norm_factor = max(effects)
+            effects = [e / norm_factor for e in effects]
+            errors = [e / norm_factor for e in errors]
+
+        return effects, errors
+
+    def _calculate_variance_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+        """
+        Calculate variance-based sensitivity with error bars.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: List of parameter bounds
+            n_samples: Number of samples for analysis
+            
+        Returns:
+            tuple: (variances, errors) - normalized variance contributions and error estimates
+        """
+        variances = []
+        errors = []
+
+        for param_name in continuous_params:
+            param_idx = continuous_params.index(param_name)
+            bounds = param_bounds[param_idx]
+
+            # Multiple bootstrap samples for error estimation
+            variance_estimates = []
+            n_bootstrap = 10
+
+            for _ in range(n_bootstrap):
+                # Generate random samples
+                n_samples_param = min(n_samples // n_bootstrap, 100)
+                param_values = np.random.uniform(
+                    bounds[0], bounds[1], n_samples_param
+                )
+
+                # Use random values for other parameters
+                predictions = []
+                for val in param_values:
+                    test_params = {param_name: val}
+
+                    # Random values for other continuous parameters
+                    for j, other_param in enumerate(continuous_params):
+                        if other_param != param_name:
+                            other_bounds = param_bounds[j]
+                            test_params[other_param] = np.random.uniform(
+                                other_bounds[0], other_bounds[1]
+                            )
+
+                    # Add non-continuous parameters
+                    for (
+                        p_name,
+                        p_config,
+                    ) in self.optimizer.params_config.items():
+                        if p_name not in continuous_params:
+                            if p_config["type"] == "discrete":
+                                test_params[p_name] = int(
+                                    np.mean(p_config["bounds"])
+                                )
+                            elif p_config["type"] == "categorical":
+                                test_params[p_name] = p_config["values"][0]
+
+                    try:
+                        param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
+                            test_params
+                        ).unsqueeze(
+                            0
+                        )
+                        with torch.no_grad():
+                            predictions.append(
+                                model.posterior(param_tensor).mean.item()
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            f"Error in variance calculation for {param_name}: {e}"
+                        )
+                        continue
+
+                if len(predictions) > 1:
+                    variance = np.var(predictions)
+                    variance_estimates.append(variance)
+
+            # Calculate mean and standard error
+            if variance_estimates:
+                mean_variance = np.mean(variance_estimates)
+                std_error = np.std(variance_estimates) / np.sqrt(
+                    len(variance_estimates)
+                )
+            else:
+                mean_variance = 0.0
+                std_error = 0.0
+
+            variances.append(mean_variance)
+            errors.append(std_error)
+
+        # Normalize variances and errors
+        total_variance = sum(variances) if sum(variances) > 0 else 1.0
+        variances = [v / total_variance for v in variances]
+        errors = [e / total_variance for e in errors]
+
+        return variances, errors
+
+    def _calculate_gradient_sensitivity(self, model, continuous_params, param_bounds, n_samples):
+        """
+        Calculate gradient-based sensitivity with uncertainty estimation.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: List of parameter bounds
+            n_samples: Number of samples for analysis
+            
+        Returns:
+            tuple: (gradients, errors) - normalized gradients and error estimates
+        """
+        gradients = []
+        errors = []
+
+        for i, param_name in enumerate(continuous_params):
+            bounds = param_bounds[i]
+            h = (bounds[1] - bounds[0]) * 0.01  # 1% step
+
+            # Multiple gradient estimates with different starting points
+            gradient_estimates = []
+            n_estimates = 10
+
+            for _ in range(n_estimates):
+                # Random central point
+                central_point = {}
+                for j, other_param in enumerate(continuous_params):
+                    other_bounds = param_bounds[j]
+                    if other_param == param_name:
+                        # Keep this parameter at center for gradient calculation
+                        central_point[other_param] = np.mean(other_bounds)
+                    else:
+                        # Random value for other parameters
+                        central_point[other_param] = np.random.uniform(
+                            other_bounds[0], other_bounds[1]
+                        )
+
+                # Add non-continuous parameters
+                for p_name, p_config in self.optimizer.params_config.items():
+                    if p_name not in continuous_params:
+                        if p_config["type"] == "discrete":
+                            central_point[p_name] = int(
+                                np.mean(p_config["bounds"])
+                            )
+                        elif p_config["type"] == "categorical":
+                            central_point[p_name] = p_config["values"][0]
+
+                try:
+                    # Forward difference
+                    point_plus = central_point.copy()
+                    point_plus[param_name] = min(
+                        bounds[1], central_point[param_name] + h
+                    )
+
+                    point_minus = central_point.copy()
+                    point_minus[param_name] = max(
+                        bounds[0], central_point[param_name] - h
+                    )
+
+                    # Evaluate
+                    tensor_plus = (
+                        self.optimizer.parameter_transformer.params_to_tensor(
+                            point_plus
+                        ).unsqueeze(0)
+                    )
+                    tensor_minus = (
+                        self.optimizer.parameter_transformer.params_to_tensor(
+                            point_minus
+                        ).unsqueeze(0)
+                    )
+
+                    with torch.no_grad():
+                        y_plus = model.posterior(tensor_plus).mean.item()
+                        y_minus = model.posterior(tensor_minus).mean.item()
+
+                    # Central difference gradient
+                    if np.isfinite(y_plus) and np.isfinite(y_minus):
+                        gradient = abs((y_plus - y_minus) / (2 * h))
+                        gradient_estimates.append(gradient)
+                except Exception as e:
+                    logger.debug(
+                        f"Error in gradient estimation for {param_name}: {e}"
+                    )
+                    continue
+
+            # Calculate mean and standard error
+            if gradient_estimates:
+                mean_gradient = np.mean(gradient_estimates)
+                std_error = np.std(gradient_estimates) / np.sqrt(
+                    len(gradient_estimates)
+                )
+            else:
+                mean_gradient = 0.0
+                std_error = 0.0
+
+            gradients.append(mean_gradient)
+            errors.append(std_error)
+
+        # Normalize gradients and errors
+        if max(gradients) > 0:
+            norm_factor = max(gradients)
+            gradients = [g / norm_factor for g in gradients]
+            errors = [e / norm_factor for e in errors]
+
+        return gradients, errors
+
+    def _calculate_lengthscale_sensitivity(self, model, continuous_params):
+        """
+        Calculate GP lengthscale-based sensitivity (model intrinsic).
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            
+        Returns:
+            tuple: (sensitivities, errors) - normalized sensitivities (no errors for this method)
+        """
+        sensitivities = []
+
+        try:
+            # Extract lengthscales from the model
+            if hasattr(model.covar_module, "base_kernel") and hasattr(
+                model.covar_module.base_kernel, "lengthscale"
+            ):
+                lengthscales = (
+                    model.covar_module.base_kernel.lengthscale.detach()
+                    .cpu()
+                    .numpy()
+                    .flatten()
+                )
+            elif hasattr(model.covar_module, "lengthscale"):
+                lengthscales = (
+                    model.covar_module.lengthscale.detach()
+                    .cpu()
+                    .numpy()
+                    .flatten()
+                )
+            else:
+                # Fallback: assume unit lengthscales
+                lengthscales = np.ones(len(continuous_params))
+
+            # Convert lengthscales to sensitivities (inverse relationship)
+            # Shorter lengthscales = higher sensitivity
+            if len(lengthscales) == len(continuous_params):
+                sensitivities = [1.0 / max(ls, 1e-6) for ls in lengthscales]
+            else:
+                # If dimensions don't match, use uniform sensitivity
+                sensitivities = [1.0] * len(continuous_params)
+
+            # Normalize
+            if max(sensitivities) > 0:
+                sensitivities = [s / max(sensitivities) for s in sensitivities]
+
+        except Exception as e:
+            logger.error(f"Error extracting lengthscales: {e}")
+            sensitivities = [0.0] * len(continuous_params)
+
+        # No errors for this method
+        errors = [0.0] * len(continuous_params)
+        return sensitivities, errors
+
+    def _calculate_feature_importance_sensitivity(self, model, continuous_params, param_bounds):
+        """
+        Calculate feature importance based on GP model structure.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: List of parameter bounds
+            
+        Returns:
+            tuple: (importances, errors) - normalized feature importances and error estimates
+        """
+        importances = []
+        errors = []
+
+        for param_name in continuous_params:
+            # Calculate feature importance using perturbation method
+            importance_estimates = []
+            n_estimates = 20
+
+            for _ in range(n_estimates):
+                # Generate baseline predictions
+                n_test = 50
+                test_points = []
+                baseline_predictions = []
+
+                for _ in range(n_test):
+                    test_params = {}
+                    for j, p_name in enumerate(continuous_params):
+                        p_bounds = param_bounds[j]
+                        test_params[p_name] = np.random.uniform(
+                            p_bounds[0], p_bounds[1]
+                        )
+
+                    # Add non-continuous parameters
+                    for (
+                        p_name,
+                        p_config,
+                    ) in self.optimizer.params_config.items():
+                        if p_name not in continuous_params:
+                            if p_config["type"] == "discrete":
+                                test_params[p_name] = int(
+                                    np.mean(p_config["bounds"])
+                                )
+                            elif p_config["type"] == "categorical":
+                                test_params[p_name] = p_config["values"][0]
+
+                    test_points.append(test_params.copy())
+
+                    try:
+                        param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
+                            test_params
+                        ).unsqueeze(
+                            0
+                        )
+                        with torch.no_grad():
+                            baseline_predictions.append(
+                                model.posterior(param_tensor).mean.item()
+                            )
+                    except:
+                        baseline_predictions.append(0.0)
+
+                # Shuffle the parameter of interest and measure impact
+                param_idx = continuous_params.index(param_name)
+                bounds = param_bounds[param_idx]
+
+                shuffled_predictions = []
+                for test_params in test_points:
+                    # Shuffle this parameter
+                    test_params[param_name] = np.random.uniform(
+                        bounds[0], bounds[1]
+                    )
+
+                    try:
+                        param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
+                            test_params
+                        ).unsqueeze(
+                            0
+                        )
+                        with torch.no_grad():
+                            shuffled_predictions.append(
+                                model.posterior(param_tensor).mean.item()
+                            )
+                    except:
+                        shuffled_predictions.append(0.0)
+
+                # Feature importance as difference in variance
+                baseline_var = (
+                    np.var(baseline_predictions)
+                    if len(baseline_predictions) > 1
+                    else 0.0
+                )
+                shuffled_var = (
+                    np.var(shuffled_predictions)
+                    if len(shuffled_predictions) > 1
+                    else 0.0
+                )
+                importance = abs(shuffled_var - baseline_var)
+                importance_estimates.append(importance)
+
+            # Calculate mean and standard error
+            if importance_estimates:
+                mean_importance = np.mean(importance_estimates)
+                std_error = np.std(importance_estimates) / np.sqrt(
+                    len(importance_estimates)
+                )
+            else:
+                mean_importance = 0.0
+                std_error = 0.0
+
+            importances.append(mean_importance)
+            errors.append(std_error)
+
+        # Normalize
+        if max(importances) > 0:
+            norm_factor = max(importances)
+            importances = [imp / norm_factor for imp in importances]
+            errors = [err / norm_factor for err in errors]
+
+        return importances, errors
+
+    def _plot_sensitivity_results(self, ax, continuous_params, values, errors, response_name, method, ylabel):
+        """
+        Plot sensitivity results with error bars and formatting.
+        
+        Args:
+            ax: Matplotlib axis object
+            continuous_params: List of continuous parameter names
+            values: Sensitivity values to plot
+            errors: Error estimates for error bars
+            response_name: Name of the response
+            method: Sensitivity analysis method name
+            ylabel: Y-axis label
+            
+        Returns:
+            matplotlib.container.BarContainer: The bar plot object
+        """
+        # Create bar plot with or without error bars
+        if any(e > 0 for e in errors):
+            bars = ax.bar(
+                continuous_params,
+                values,
+                yerr=errors,
+                capsize=5,
+                alpha=0.7,
+                error_kw={"linewidth": 2, "ecolor": "black"},
+            )
+        else:
+            bars = ax.bar(continuous_params, values, alpha=0.7)
+            
+        # Set labels and title
+        ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
+        
+        # Create title based on method
+        method_titles = {
+            "sobol": "Sobol Sensitivity Analysis",
+            "morris": "Morris Sensitivity Analysis", 
+            "gradient": "Gradient-based Sensitivity",
+            "variance": "Variance-based Sensitivity",
+            "lengthscale": "GP Intrinsic Sensitivity",
+            "feature_importance": "Feature Importance Analysis"
+        }
+        
+        title = method_titles.get(method, f"{method.title()} Sensitivity Analysis")
+        ax.set_title(f"{title} - {response_name}", fontsize=14, fontweight="bold")
+        
+        return bars
+
+    def _format_sensitivity_plot(self, ax, fig):
+        """
+        Apply final formatting to sensitivity analysis plot.
+        
+        Args:
+            ax: Matplotlib axis object
+            fig: Matplotlib figure object
+        """
+        ax.tick_params(axis="x", rotation=45)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+
     def create_sensitivity_analysis_plot(
         self, fig, canvas, response_name, method="variance", n_samples=500
     ):
@@ -2302,471 +3150,50 @@ class SimplePlotManager:
         fig.clear()
 
         try:
-            # Get response models
-            models = self.optimizer.get_response_models()
-
-            if response_name not in models:
-                self._plot_message(
-                    fig,
-                    f"Model for {response_name} not available.\n\nThis usually means insufficient data.",
-                )
+            # Setup and validate parameters
+            setup_result = self._setup_sensitivity_analysis_base(fig, response_name)
+            if setup_result is None:
                 if canvas:
                     canvas.draw()
                 return
-
-            model = models[response_name]
-
-            # Get parameter information
-            param_names = list(self.optimizer.params_config.keys())
-            continuous_params = []
-            param_bounds = []
-
-            for param_name in param_names:
-                param_config = self.optimizer.params_config[param_name]
-                if param_config["type"] == "continuous":
-                    continuous_params.append(param_name)
-                    param_bounds.append(param_config["bounds"])
-
-            if len(continuous_params) < 1:
-                self._plot_message(
-                    fig, "Need at least 1 continuous parameter for sensitivity analysis"
-                )
-                if canvas:
-                    canvas.draw()
-                return
-
-            ax = fig.add_subplot(111)
+            
+            model, continuous_params, param_bounds, ax = setup_result
 
             if method == "sobol":
-                # Enhanced Sobol-like sensitivity analysis with confidence intervals
-                sensitivities = []
-                errors = []
-
-                for i, param_name in enumerate(continuous_params):
-                    # Multiple runs for statistical significance
-                    runs = []
-                    for run in range(10):  # 10 bootstrap runs
-                        # Generate samples varying this parameter while keeping others fixed
-                        bounds = param_bounds[i]
-                        param_values = np.linspace(
-                            bounds[0], bounds[1], min(n_samples // 10, 50)
-                        )
-
-                        # Use mean values for other parameters
-                        base_params = {}
-                        for j, other_param in enumerate(continuous_params):
-                            if other_param != param_name:
-                                other_bounds = param_bounds[j]
-                                base_params[other_param] = np.mean(other_bounds)
-
-                        # Add non-continuous parameters
-                        for p_name, p_config in self.optimizer.params_config.items():
-                            if p_name not in continuous_params:
-                                if p_config["type"] == "discrete":
-                                    base_params[p_name] = int(
-                                        np.mean(p_config["bounds"])
-                                    )
-                            elif p_config["type"] == "categorical":
-                                base_params[p_name] = p_config["values"][0]
-
-                    predictions = []
-                    for val in param_values:
-                        test_params = {param_name: val, **base_params}
-                        param_tensor = (
-                            self.optimizer.parameter_transformer.params_to_tensor(
-                                test_params
-                            ).unsqueeze(0)
-                        )
-                        with torch.no_grad():
-                            posterior = model.posterior(param_tensor)
-                            predictions.append(posterior.mean.item())
-
-                    # Calculate sensitivity as variance
-                    sensitivity = np.var(predictions)
-                    sensitivities.append(sensitivity)
-
-                # Normalize sensitivities
-                if max(sensitivities) > 0:
-                    sensitivities = [s / sum(sensitivities) for s in sensitivities]
-
-                ax.bar(continuous_params, sensitivities)
-                ax.set_ylabel("Sensitivity Index", fontsize=12, fontweight="bold")
-                ax.set_title(
-                    f"Sobol Sensitivity Analysis - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
+                sensitivities, errors = self._calculate_sobol_sensitivity(
+                    model, continuous_params, param_bounds, n_samples
+                )
+                self._plot_sensitivity_results(
+                    ax, continuous_params, sensitivities, errors, response_name, method, "Sensitivity Index"
                 )
 
             elif method == "morris":
-                # Enhanced Morris elementary effects with error bars
-                effects = []
-                errors = []
-
-                for param_name in continuous_params:
-                    param_idx = continuous_params.index(param_name)
-                    bounds = param_bounds[param_idx]
-
-                    # Generate random trajectories
-                    n_trajectories = min(
-                        50, n_samples // 5
-                    )  # More trajectories for better statistics
-                    elementary_effects = []
-
-                    for _ in range(n_trajectories):
-                        # Random starting point
-                        base_point = {}
-                        for j, p_name in enumerate(continuous_params):
-                            p_bounds = param_bounds[j]
-                            base_point[p_name] = np.random.uniform(
-                                p_bounds[0], p_bounds[1]
-                            )
-
-                        # Add non-continuous parameters
-                        for p_name, p_config in self.optimizer.params_config.items():
-                            if p_name not in continuous_params:
-                                if p_config["type"] == "discrete":
-                                    base_point[p_name] = int(
-                                        np.mean(p_config["bounds"])
-                                    )
-                                elif p_config["type"] == "categorical":
-                                    base_point[p_name] = p_config["values"][0]
-
-                        try:
-                            # Evaluate at base point
-                            param_tensor1 = (
-                                self.optimizer.parameter_transformer.params_to_tensor(
-                                    base_point
-                                ).unsqueeze(0)
-                            )
-                            with torch.no_grad():
-                                y1 = model.posterior(param_tensor1).mean.item()
-
-                            # Perturb parameter
-                            delta = (
-                                bounds[1] - bounds[0]
-                            ) * 0.05  # 5% of range for more precise estimation
-                            perturbed_point = base_point.copy()
-                            perturbed_point[param_name] = min(
-                                bounds[1], base_point[param_name] + delta
-                            )
-
-                            # Evaluate at perturbed point
-                            param_tensor2 = (
-                                self.optimizer.parameter_transformer.params_to_tensor(
-                                    perturbed_point
-                                ).unsqueeze(0)
-                            )
-                            with torch.no_grad():
-                                y2 = model.posterior(param_tensor2).mean.item()
-
-                            # Elementary effect
-                            if delta > 0 and np.isfinite(y1) and np.isfinite(y2):
-                                effect = abs(y2 - y1) / delta
-                                elementary_effects.append(effect)
-                        except Exception as e:
-                            logger.debug(
-                                f"Error in Morris method trajectory for {param_name}: {e}"
-                            )
-                            continue
-
-                    # Mean elementary effect and standard error
-                    if elementary_effects:
-                        mean_effect = np.mean(elementary_effects)
-                        std_error = np.std(elementary_effects) / np.sqrt(
-                            len(elementary_effects)
-                        )
-                    else:
-                        mean_effect = 0.0
-                        std_error = 0.0
-                    effects.append(mean_effect)
-                    errors.append(std_error)
-
-                # Normalize effects and errors
-                if max(effects) > 0:
-                    norm_factor = max(effects)
-                    effects = [e / norm_factor for e in effects]
-                    errors = [e / norm_factor for e in errors]
-
-                bars = ax.bar(
-                    continuous_params,
-                    effects,
-                    yerr=errors,
-                    capsize=5,
-                    alpha=0.7,
-                    error_kw={"linewidth": 2, "ecolor": "black"},
+                effects, errors = self._calculate_morris_sensitivity(
+                    model, continuous_params, param_bounds, n_samples
                 )
-                ax.set_ylabel(
-                    "Normalized Mean Elementary Effect", fontsize=12, fontweight="bold"
-                )
-                ax.set_title(
-                    f"Morris Sensitivity Analysis - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
+                self._plot_sensitivity_results(
+                    ax, continuous_params, effects, errors, response_name, method, "Normalized Mean Elementary Effect"
                 )
 
             elif method == "gradient":
-                # Enhanced gradient-based sensitivity with uncertainty estimation
-                gradients = []
-                errors = []
-
-                for i, param_name in enumerate(continuous_params):
-                    bounds = param_bounds[i]
-                    h = (bounds[1] - bounds[0]) * 0.01  # 1% step
-
-                    # Multiple gradient estimates with different starting points
-                    gradient_estimates = []
-                    n_estimates = 10
-
-                    for _ in range(n_estimates):
-                        # Random central point
-                        central_point = {}
-                        for j, other_param in enumerate(continuous_params):
-                            other_bounds = param_bounds[j]
-                            if other_param == param_name:
-                                # Keep this parameter at center for gradient calculation
-                                central_point[other_param] = np.mean(other_bounds)
-                            else:
-                                # Random value for other parameters
-                                central_point[other_param] = np.random.uniform(
-                                    other_bounds[0], other_bounds[1]
-                                )
-
-                        # Add non-continuous parameters
-                        for p_name, p_config in self.optimizer.params_config.items():
-                            if p_name not in continuous_params:
-                                if p_config["type"] == "discrete":
-                                    central_point[p_name] = int(
-                                        np.mean(p_config["bounds"])
-                                    )
-                                elif p_config["type"] == "categorical":
-                                    central_point[p_name] = p_config["values"][0]
-
-                        try:
-                            # Forward difference
-                            point_plus = central_point.copy()
-                            point_plus[param_name] = min(
-                                bounds[1], central_point[param_name] + h
-                            )
-
-                            point_minus = central_point.copy()
-                            point_minus[param_name] = max(
-                                bounds[0], central_point[param_name] - h
-                            )
-
-                            # Evaluate
-                            tensor_plus = (
-                                self.optimizer.parameter_transformer.params_to_tensor(
-                                    point_plus
-                                ).unsqueeze(0)
-                            )
-                            tensor_minus = (
-                                self.optimizer.parameter_transformer.params_to_tensor(
-                                    point_minus
-                                ).unsqueeze(0)
-                            )
-
-                            with torch.no_grad():
-                                y_plus = model.posterior(tensor_plus).mean.item()
-                                y_minus = model.posterior(tensor_minus).mean.item()
-
-                            # Central difference gradient
-                            if np.isfinite(y_plus) and np.isfinite(y_minus):
-                                gradient = abs((y_plus - y_minus) / (2 * h))
-                                gradient_estimates.append(gradient)
-                        except Exception as e:
-                            logger.debug(
-                                f"Error in gradient estimation for {param_name}: {e}"
-                            )
-                            continue
-
-                    # Calculate mean and standard error
-                    if gradient_estimates:
-                        mean_gradient = np.mean(gradient_estimates)
-                        std_error = np.std(gradient_estimates) / np.sqrt(
-                            len(gradient_estimates)
-                        )
-                    else:
-                        mean_gradient = 0.0
-                        std_error = 0.0
-
-                    gradients.append(mean_gradient)
-                    errors.append(std_error)
-
-                # Normalize gradients and errors
-                if max(gradients) > 0:
-                    norm_factor = max(gradients)
-                    gradients = [g / norm_factor for g in gradients]
-                    errors = [e / norm_factor for e in errors]
-
-                bars = ax.bar(
-                    continuous_params,
-                    gradients,
-                    yerr=errors,
-                    capsize=5,
-                    alpha=0.7,
-                    error_kw={"linewidth": 2, "ecolor": "black"},
+                gradients, errors = self._calculate_gradient_sensitivity(
+                    model, continuous_params, param_bounds, n_samples
                 )
-                ax.set_ylabel(
-                    "Normalized Local Gradient", fontsize=12, fontweight="bold"
-                )
-                ax.set_title(
-                    f"Gradient-based Sensitivity - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
+                self._plot_sensitivity_results(
+                    ax, continuous_params, gradients, errors, response_name, method, "Normalized Local Gradient"
                 )
 
-            elif method == "variance":
-                # Enhanced variance-based sensitivity with error bars
-                variances = []
-                errors = []
-
-                for param_name in continuous_params:
-                    param_idx = continuous_params.index(param_name)
-                    bounds = param_bounds[param_idx]
-
-                    # Multiple bootstrap samples for error estimation
-                    variance_estimates = []
-                    n_bootstrap = 10
-
-                    for _ in range(n_bootstrap):
-                        # Generate random samples
-                        n_samples_param = min(n_samples // n_bootstrap, 100)
-                        param_values = np.random.uniform(
-                            bounds[0], bounds[1], n_samples_param
-                        )
-
-                        # Use random values for other parameters
-                        predictions = []
-                        for val in param_values:
-                            test_params = {param_name: val}
-
-                            # Random values for other continuous parameters
-                            for j, other_param in enumerate(continuous_params):
-                                if other_param != param_name:
-                                    other_bounds = param_bounds[j]
-                                    test_params[other_param] = np.random.uniform(
-                                        other_bounds[0], other_bounds[1]
-                                    )
-
-                            # Add non-continuous parameters
-                            for (
-                                p_name,
-                                p_config,
-                            ) in self.optimizer.params_config.items():
-                                if p_name not in continuous_params:
-                                    if p_config["type"] == "discrete":
-                                        test_params[p_name] = int(
-                                            np.mean(p_config["bounds"])
-                                        )
-                                    elif p_config["type"] == "categorical":
-                                        test_params[p_name] = p_config["values"][0]
-
-                            try:
-                                param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
-                                    test_params
-                                ).unsqueeze(
-                                    0
-                                )
-                                with torch.no_grad():
-                                    predictions.append(
-                                        model.posterior(param_tensor).mean.item()
-                                    )
-                            except Exception as e:
-                                logger.debug(
-                                    f"Error in variance calculation for {param_name}: {e}"
-                                )
-                                continue
-
-                        if len(predictions) > 1:
-                            variance = np.var(predictions)
-                            variance_estimates.append(variance)
-
-                    # Calculate mean and standard error
-                    if variance_estimates:
-                        mean_variance = np.mean(variance_estimates)
-                        std_error = np.std(variance_estimates) / np.sqrt(
-                            len(variance_estimates)
-                        )
-                    else:
-                        mean_variance = 0.0
-                        std_error = 0.0
-
-                    variances.append(mean_variance)
-                    errors.append(std_error)
-
-                # Normalize variances and errors
-                total_variance = sum(variances) if sum(variances) > 0 else 1.0
-                variances = [v / total_variance for v in variances]
-                errors = [e / total_variance for e in errors]
-
-                bars = ax.bar(
-                    continuous_params,
-                    variances,
-                    yerr=errors,
-                    capsize=5,
-                    alpha=0.7,
-                    error_kw={"linewidth": 2, "ecolor": "black"},
-                )
-                ax.set_ylabel("Variance Contribution", fontsize=12, fontweight="bold")
-                ax.set_title(
-                    f"Variance-based Sensitivity - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
-                )
 
             elif method == "lengthscale":
-                # GP lengthscale-based sensitivity (model intrinsic)
-                sensitivities = []
-
-                # Get lengthscales from the GP model
                 try:
-                    # Extract lengthscales from the model
-                    if hasattr(model.covar_module, "base_kernel") and hasattr(
-                        model.covar_module.base_kernel, "lengthscale"
-                    ):
-                        lengthscales = (
-                            model.covar_module.base_kernel.lengthscale.detach()
-                            .cpu()
-                            .numpy()
-                            .flatten()
-                        )
-                    elif hasattr(model.covar_module, "lengthscale"):
-                        lengthscales = (
-                            model.covar_module.lengthscale.detach()
-                            .cpu()
-                            .numpy()
-                            .flatten()
-                        )
-                    else:
-                        # Fallback: assume unit lengthscales
-                        lengthscales = np.ones(len(continuous_params))
-
-                    # Convert lengthscales to sensitivities (inverse relationship)
-                    # Shorter lengthscales = higher sensitivity
-                    if len(lengthscales) == len(continuous_params):
-                        sensitivities = [1.0 / max(ls, 1e-6) for ls in lengthscales]
-                    else:
-                        # If dimensions don't match, use uniform sensitivity
-                        sensitivities = [1.0] * len(continuous_params)
-
-                    # Normalize
-                    if max(sensitivities) > 0:
-                        sensitivities = [s / max(sensitivities) for s in sensitivities]
-
-                    bars = ax.bar(continuous_params, sensitivities, alpha=0.7)
-                    ax.set_ylabel(
-                        "GP Lengthscale-based Sensitivity",
-                        fontsize=12,
-                        fontweight="bold",
+                    sensitivities, errors = self._calculate_lengthscale_sensitivity(
+                        model, continuous_params
                     )
-                    ax.set_title(
-                        f"GP Intrinsic Sensitivity - {response_name}",
-                        fontsize=14,
-                        fontweight="bold",
+                    self._plot_sensitivity_results(
+                        ax, continuous_params, sensitivities, errors, response_name, method, "GP Lengthscale-based Sensitivity"
                     )
-
                 except Exception as e:
-                    logger.error(f"Error extracting lengthscales: {e}")
+                    logger.error(f"Error in lengthscale sensitivity calculation: {e}")
                     self._plot_message(
                         fig,
                         f"Could not extract GP lengthscales for sensitivity analysis",
@@ -2775,130 +3202,20 @@ class SimplePlotManager:
                         canvas.draw()
                     return
 
+            elif method == "variance":
+                variances, errors = self._calculate_variance_sensitivity(
+                    model, continuous_params, param_bounds, n_samples
+                )
+                self._plot_sensitivity_results(
+                    ax, continuous_params, variances, errors, response_name, method, "Variance Contribution"
+                )
+
             elif method == "feature_importance":
-                # Feature importance based on GP model structure
-                importances = []
-                errors = []
-
-                for param_name in continuous_params:
-                    # Calculate feature importance using perturbation method
-                    importance_estimates = []
-                    n_estimates = 20
-
-                    for _ in range(n_estimates):
-                        # Generate baseline predictions
-                        n_test = 50
-                        test_points = []
-                        baseline_predictions = []
-
-                        for _ in range(n_test):
-                            test_params = {}
-                            for j, p_name in enumerate(continuous_params):
-                                p_bounds = param_bounds[j]
-                                test_params[p_name] = np.random.uniform(
-                                    p_bounds[0], p_bounds[1]
-                                )
-
-                            # Add non-continuous parameters
-                            for (
-                                p_name,
-                                p_config,
-                            ) in self.optimizer.params_config.items():
-                                if p_name not in continuous_params:
-                                    if p_config["type"] == "discrete":
-                                        test_params[p_name] = int(
-                                            np.mean(p_config["bounds"])
-                                        )
-                                    elif p_config["type"] == "categorical":
-                                        test_params[p_name] = p_config["values"][0]
-
-                            test_points.append(test_params.copy())
-
-                            try:
-                                param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
-                                    test_params
-                                ).unsqueeze(
-                                    0
-                                )
-                                with torch.no_grad():
-                                    baseline_predictions.append(
-                                        model.posterior(param_tensor).mean.item()
-                                    )
-                            except:
-                                baseline_predictions.append(0.0)
-
-                        # Shuffle the parameter of interest and measure impact
-                        param_idx = continuous_params.index(param_name)
-                        bounds = param_bounds[param_idx]
-
-                        shuffled_predictions = []
-                        for test_params in test_points:
-                            # Shuffle this parameter
-                            test_params[param_name] = np.random.uniform(
-                                bounds[0], bounds[1]
-                            )
-
-                            try:
-                                param_tensor = self.optimizer.parameter_transformer.params_to_tensor(
-                                    test_params
-                                ).unsqueeze(
-                                    0
-                                )
-                                with torch.no_grad():
-                                    shuffled_predictions.append(
-                                        model.posterior(param_tensor).mean.item()
-                                    )
-                            except:
-                                shuffled_predictions.append(0.0)
-
-                        # Feature importance as difference in variance
-                        baseline_var = (
-                            np.var(baseline_predictions)
-                            if len(baseline_predictions) > 1
-                            else 0.0
-                        )
-                        shuffled_var = (
-                            np.var(shuffled_predictions)
-                            if len(shuffled_predictions) > 1
-                            else 0.0
-                        )
-                        importance = abs(shuffled_var - baseline_var)
-                        importance_estimates.append(importance)
-
-                    # Calculate mean and standard error
-                    if importance_estimates:
-                        mean_importance = np.mean(importance_estimates)
-                        std_error = np.std(importance_estimates) / np.sqrt(
-                            len(importance_estimates)
-                        )
-                    else:
-                        mean_importance = 0.0
-                        std_error = 0.0
-
-                    importances.append(mean_importance)
-                    errors.append(std_error)
-
-                # Normalize
-                if max(importances) > 0:
-                    norm_factor = max(importances)
-                    importances = [imp / norm_factor for imp in importances]
-                    errors = [err / norm_factor for err in errors]
-
-                bars = ax.bar(
-                    continuous_params,
-                    importances,
-                    yerr=errors,
-                    capsize=5,
-                    alpha=0.7,
-                    error_kw={"linewidth": 2, "ecolor": "black"},
+                importances, errors = self._calculate_feature_importance_sensitivity(
+                    model, continuous_params, param_bounds
                 )
-                ax.set_ylabel(
-                    "Normalized Feature Importance", fontsize=12, fontweight="bold"
-                )
-                ax.set_title(
-                    f"Feature Importance Analysis - {response_name}",
-                    fontsize=14,
-                    fontweight="bold",
+                self._plot_sensitivity_results(
+                    ax, continuous_params, importances, errors, response_name, method, "Normalized Feature Importance"
                 )
 
             else:
@@ -2909,9 +3226,7 @@ class SimplePlotManager:
                 return
 
             # Format plot
-            ax.tick_params(axis="x", rotation=45)
-            ax.grid(True, alpha=0.3)
-            fig.tight_layout()
+            self._format_sensitivity_plot(ax, fig)
 
         except Exception as e:
             logger.error(f"Error creating sensitivity analysis plot: {e}")

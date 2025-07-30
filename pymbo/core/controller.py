@@ -1100,6 +1100,173 @@ class SimpleController:
                     "Import Error", f"Failed to handle batch input: {e}"
                 )
 
+    def _prepare_base_report_data(self) -> Dict[str, Any]:
+        """Prepare base report data including project info, parameters, and best solutions."""
+        # Get Pareto front
+        pareto_X, pareto_obj, pareto_indices = self.optimizer.get_pareto_front()
+        
+        # Get best solution
+        best_params, best_responses = self.optimizer.get_best_compromise_solution()
+        
+        return {
+            "project_name": "Multi-Objective Optimization Study",
+            "timestamp": datetime.now().isoformat(),
+            "total_experiments": len(self.optimizer.experimental_data),
+            "parameters": self.optimizer.params_config,
+            "objectives": self.optimizer.responses_config,
+            "constraints": self.optimizer.general_constraints,
+            "final_hypervolume": self.optimizer._calculate_hypervolume_legacy(),
+            "experimental_data": self.optimizer.experimental_data.to_dict("records"),
+            "iteration_history": self.optimizer.iteration_history,
+            "pareto_solutions": len(pareto_indices),
+            "best_solution": {
+                "parameters": best_params,
+                "responses": best_responses,
+            }
+        }
+
+    def _gather_statistical_analysis_data(self) -> Dict[str, Any]:
+        """Gather statistical analysis data including validation report."""
+        validation_report = scientific_validator.validate_experimental_data(
+            self.optimizer.experimental_data, self.optimizer.params_config
+        )
+        
+        return {
+            "descriptive_statistics": validation_report["statistics"].get("descriptive", {}),
+            "outlier_counts": validation_report["statistics"].get("outlier_counts", {}),
+            "quality_score": validation_report["statistics"].get("quality_score", 0),
+            "warnings": validation_report["warnings"],
+            "errors": validation_report["errors"]
+        }
+
+    def _calculate_correlations(self) -> Dict[str, float]:
+        """Calculate correlations between numeric variables."""
+        numeric_data = self.optimizer.experimental_data.select_dtypes(include=[np.number])
+        correlations = {}
+        
+        if not numeric_data.empty and len(numeric_data.columns) > 1:
+            corr_matrix = numeric_data.corr().stack().reset_index()
+            corr_matrix.columns = ["var1", "var2", "correlation"]
+            
+            for _, row in corr_matrix.iterrows():
+                if (row["var1"] != row["var2"] and 
+                    f"{row['var2']}-{row['var1']}" not in correlations):
+                    correlations[f"{row['var1']}-{row['var2']}"] = row["correlation"]
+        
+        return correlations
+
+    def _generate_plot_images(self, plot_configs: Dict[str, Any]) -> Dict[str, str]:
+        """Generate plot images as base64 strings based on plot configurations."""
+        plots_base64 = {}
+        
+        if not self.plot_manager or not plot_configs:
+            return plots_base64
+
+        # Generate Pareto plot
+        if plot_configs.get("pareto_plot"):
+            fig_pareto = plt.figure(figsize=(8, 6))
+            pareto_X, pareto_obj, _ = self.optimizer.get_pareto_front()
+            
+            self.plot_manager.create_pareto_plot(
+                fig_pareto,
+                None,  # Canvas is not needed for static image
+                (self.optimizer.objective_names[0] if self.optimizer.objective_names else ""),
+                (self.optimizer.objective_names[1] if len(self.optimizer.objective_names) > 1 else ""),
+                pareto_X,
+                pareto_obj,
+            )
+            plots_base64["pareto_front_plot"] = report_generator._fig_to_base64(fig_pareto)
+
+        # Generate progress plot
+        if plot_configs.get("progress_plot"):
+            fig_progress = plt.figure(figsize=(8, 6))
+            self.plot_manager.create_progress_plot(fig_progress, None)
+            plots_base64["optimization_progress_plot"] = report_generator._fig_to_base64(fig_progress)
+
+        # Generate GP slice plots
+        for i, gp_slice_config in enumerate(plot_configs.get("gp_slice_plots", [])):
+            if gp_slice_config.get("include"):
+                response_name = gp_slice_config.get("response")
+                param1_name = gp_slice_config.get("param1")
+                param2_name = gp_slice_config.get("param2")
+                fixed_value = 0.5  # Normalized fixed value for the second parameter
+
+                if response_name and param1_name and param2_name:
+                    fig_gp_slice = plt.figure(figsize=(8, 6))
+                    self.plot_manager.create_gp_slice_plot(
+                        fig_gp_slice, None, response_name, param1_name, param2_name, fixed_value
+                    )
+                    plots_base64[f"gp_slice_plot_{i}"] = report_generator._fig_to_base64(fig_gp_slice)
+
+        # Generate 3D surface plots
+        for i, surface_3d_config in enumerate(plot_configs.get("3d_surface_plots", [])):
+            if surface_3d_config.get("include"):
+                response_name = surface_3d_config.get("response")
+                param1_name = surface_3d_config.get("param1")
+                param2_name = surface_3d_config.get("param2")
+
+                if response_name and param1_name and param2_name:
+                    fig_3d_surface = plt.figure(figsize=(8, 6))
+                    self.plot_manager.create_3d_surface_plot(
+                        fig_3d_surface, None, response_name, param1_name, param2_name
+                    )
+                    plots_base64[f"3d_surface_plot_{i}"] = report_generator._fig_to_base64(fig_3d_surface)
+
+        # Generate parallel coordinates plot
+        if plot_configs.get("parallel_coordinates_plot"):
+            fig_parallel_coords = plt.figure(figsize=(8, 6))
+            all_params = list(self.optimizer.params_config.keys())
+            all_responses = list(self.optimizer.responses_config.keys())
+            selected_vars_for_report = all_params + all_responses
+
+            self.plot_manager.create_parallel_coordinates_plot(
+                fig_parallel_coords, None, selected_vars_for_report
+            )
+            plots_base64["parallel_coordinates_plot"] = report_generator._fig_to_base64(fig_parallel_coords)
+
+        return plots_base64
+
+    def _export_report_with_fallback(self, report_type: str, report_data: Dict[str, Any], 
+                                   output_format: str, filepath: Path, plots_base64: Dict[str, str]) -> None:
+        """Export report using enhanced generator with fallback to original generator."""
+        try:
+            # Try using the enhanced report generator first
+            enhanced_report_generator.generate_enhanced_report(
+                report_type=report_type,
+                data=report_data,
+                output_format=output_format,
+                filepath=filepath,
+            )
+            logger.info("Enhanced report generated successfully using new generator")
+
+        except Exception as enhanced_error:
+            logger.warning(f"Enhanced report generator failed: {enhanced_error}")
+            logger.info("Falling back to original report generator")
+
+            # Fallback to original ScientificReportGenerator
+            if output_format == "pdf":
+                report_generator.generate_report(
+                    "optimization_report", report_data, "pdf", filepath, plots_base64
+                )
+            elif output_format == "html":
+                report_generator.generate_report(
+                    "optimization_report", report_data, "html", filepath, plots_base64
+                )
+            elif output_format == "markdown":
+                markdown_content = report_generator.generate_report(
+                    "optimization_report", report_data, "markdown"
+                )
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(markdown_content)
+            elif output_format == "json":
+                with open(filepath, "w") as f:
+                    json.dump(report_data, f, indent=2, default=str)
+            elif output_format == "pkl":  # For full data export
+                with open(filepath, "wb") as f:
+                    pickle.dump(report_data, f)
+            else:
+                raise ValueError(f"Unsupported report format: {output_format}")
+
     def export_comprehensive_report(
         self,
         filepath: Union[str, Path],

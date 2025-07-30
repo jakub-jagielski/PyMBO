@@ -627,6 +627,50 @@ class Surface3DControlPanel:
             except:
                 settings[key] = None
         return settings
+    
+    def get_axis_ranges(self):
+        """Get axis ranges for 3D plotting in the format expected by GUI"""
+        try:
+            def parse_range_value(value_str):
+                """Parse range value, return None for 'auto'"""
+                if value_str == 'auto' or value_str == '':
+                    return None
+                try:
+                    return float(value_str)
+                except (ValueError, TypeError):
+                    return None
+            
+            # Parse individual range values
+            x_min = parse_range_value(self.surface_settings['x_min'].get())
+            x_max = parse_range_value(self.surface_settings['x_max'].get())
+            y_min = parse_range_value(self.surface_settings['y_min'].get())
+            y_max = parse_range_value(self.surface_settings['y_max'].get())
+            z_min = parse_range_value(self.surface_settings['z_min'].get())
+            z_max = parse_range_value(self.surface_settings['z_max'].get())
+            
+            # Determine if each axis is auto-scaled
+            x_is_auto = (x_min is None or x_max is None)
+            y_is_auto = (y_min is None or y_max is None)
+            z_is_auto = (z_min is None or z_max is None)
+            
+            # Return in the format expected by GUI: {axis_name: (min_val, max_val, is_auto)}
+            ranges = {
+                'x_axis': (x_min, x_max, x_is_auto),
+                'y_axis': (y_min, y_max, y_is_auto),
+                'z_axis': (z_min, z_max, z_is_auto)
+            }
+            
+            logger.debug(f"Retrieved axis ranges for {self.plot_type}: {ranges}")
+            return ranges
+            
+        except Exception as e:
+            logger.error(f"Error getting axis ranges for {self.plot_type}: {e}")
+            # Return default ranges (auto-scale)
+            return {
+                'x_axis': (None, None, True),
+                'y_axis': (None, None, True),
+                'z_axis': (None, None, True)
+            }
 
 
 def create_surface_3d_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 

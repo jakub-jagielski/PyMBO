@@ -1202,7 +1202,15 @@ class EnhancedMultiObjectiveOptimizer:
                 logger.warning("No GP models could be built for any objective.")
                 return None
 
+            # Validate that we have models for all objectives
+            if len(models) != len(self.objective_names):
+                logger.error(f"Model count mismatch: built {len(models)} models for {len(self.objective_names)} objectives")
+                logger.error(f"Objectives: {self.objective_names}")
+                logger.error("This can cause dimension mismatches in acquisition functions")
+                return None
+
             # Return a ModelListGP if multiple objectives, or the single model if only one.
+            logger.debug(f"Successfully built {len(models)} models for objectives: {self.objective_names}")
             return ModelListGP(*models) if len(models) > 1 else models[0]
 
         except Exception as e:
@@ -1248,19 +1256,63 @@ class EnhancedMultiObjectiveOptimizer:
                 ref_point = self._calculate_adaptive_reference_point(clean_Y)
 
                 logger.debug(f"Ref point for HVI: {ref_point}")
+                logger.debug(f"Clean Y shape: {clean_Y.shape}")
+                logger.debug(f"Ref point shape: {ref_point.shape}")
+                
+                # Validate dimensions before creating acquisition function
+                if ref_point.shape[0] != clean_Y.shape[1]:
+                    logger.error(f"Dimension mismatch: ref_point has {ref_point.shape[0]} dimensions, "
+                               f"but clean_Y has {clean_Y.shape[1]} objectives")
+                    return None
+                
                 try:
                     partitioning = FastNondominatedPartitioning(
                         ref_point=ref_point, Y=clean_Y
                     )
-                    return ExpectedHypervolumeImprovement(
+                    
+                    # Additional validation for model compatibility
+                    if isinstance(models, ModelListGP):
+                        expected_outputs = len(models.models)
+                    else:
+                        expected_outputs = models.num_outputs if hasattr(models, 'num_outputs') else 1
+                    
+                    if expected_outputs != clean_Y.shape[1]:
+                        logger.error(f"Model outputs ({expected_outputs}) don't match data objectives ({clean_Y.shape[1]})")
+                        return None
+                    
+                    ehvi = ExpectedHypervolumeImprovement(
                         model=models,
                         ref_point=ref_point.tolist(),
                         partitioning=partitioning,
                     )
+                    
+                    # Test the acquisition function with a dummy input to catch dimension issues early
+                    try:
+                        test_input = torch.randn(1, len(self.parameter_transformer.param_names), 
+                                               dtype=self.dtype, device=self.device)
+                        test_output = ehvi(test_input)
+                        logger.debug(f"EHVI test successful: output shape {test_output.shape}")
+                        return ehvi
+                    except Exception as test_e:
+                        logger.error(f"EHVI test failed with test input: {test_e}")
+                        logger.error(f"Test input shape: {test_input.shape}")
+                        logger.error(f"Expected parameters: {len(self.parameter_transformer.param_names)}")
+                        
+                        # Try fallback to simpler acquisition function for multi-objective
+                        logger.warning("Attempting fallback to scalarized Expected Improvement")
+                        try:
+                            # Use a simple weighted scalarization as fallback
+                            return self._create_scalarized_ei_fallback(models, clean_Y)
+                        except Exception as fallback_e:
+                            logger.error(f"Fallback acquisition function also failed: {fallback_e}")
+                            return None
                 except Exception as e:
                     logger.error(
-                        f"Error creating FastNondominatedPartitioning for EHVI: {e}"
+                        f"Error creating EHVI acquisition function: {e}"
                     )
+                    logger.error(f"Model type: {type(models)}")
+                    logger.error(f"Clean Y shape: {clean_Y.shape}")
+                    logger.error(f"Ref point: {ref_point}")
                     return None
             else:
                 # Single objective: use EI
@@ -1280,6 +1332,47 @@ class EnhancedMultiObjectiveOptimizer:
 
         except Exception as e:
             logger.error(f"Error setting up acquisition function: {e}", exc_info=True)
+            return None
+
+    def _create_scalarized_ei_fallback(self, models, clean_Y):
+        """
+        Creates a fallback scalarized Expected Improvement acquisition function
+        when EHVI fails due to dimension mismatches.
+        
+        Args:
+            models: The GP models
+            clean_Y: Clean training objectives
+            
+        Returns:
+            A scalarized acquisition function or None if it fails
+        """
+        try:
+            from botorch.acquisition.multi_objective import qExpectedImprovement
+            from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
+            
+            # Create equal weights for all objectives (could be made configurable)
+            weights = torch.ones(clean_Y.shape[1], dtype=self.dtype, device=self.device) / clean_Y.shape[1]
+            
+            # Use Chebyshev scalarization
+            transform = get_chebyshev_scalarization(weights=weights, Y=clean_Y)
+            
+            # Create scalarized EI
+            scalarized_ei = qExpectedImprovement(
+                model=models,
+                objective=transform,
+                best_f=transform(clean_Y).max(),
+            )
+            
+            # Test the fallback acquisition function
+            test_input = torch.randn(1, len(self.parameter_transformer.param_names), 
+                                   dtype=self.dtype, device=self.device)
+            test_output = scalarized_ei(test_input)
+            logger.info(f"Scalarized EI fallback successful: output shape {test_output.shape}")
+            
+            return scalarized_ei
+            
+        except Exception as e:
+            logger.error(f"Failed to create scalarized EI fallback: {e}")
             return None
 
     def _optimize_acquisition_function(

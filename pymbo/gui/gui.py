@@ -538,13 +538,24 @@ class SimpleOptimizerApp(tk.Tk):
 
     def _clear_content_frame(self):
         """Clear the content frame for new content"""
-        for widget in self.content_frame.winfo_children():
-            widget.destroy()
+        # Check if content_frame exists and is valid
+        if hasattr(self, 'content_frame') and self.content_frame.winfo_exists():
+            for widget in self.content_frame.winfo_children():
+                widget.destroy()
 
     def _show_welcome_screen(self) -> None:
         """
         Displays a modern welcome screen with improved layout and styling.
         """
+        # Ensure main frame is recreated if it was destroyed
+        if not hasattr(self, 'main_frame') or not self.main_frame.winfo_exists():
+            self._create_main_layout()
+        
+        # Ensure content frame exists before clearing
+        if not hasattr(self, 'content_frame') or not self.content_frame.winfo_exists():
+            self.content_frame = tk.Frame(self.main_frame, bg=ModernTheme.BACKGROUND)
+            self.content_frame.pack(fill=tk.BOTH, expand=True, padx=24, pady=(0, 24))
+        
         # Clear the content frame and create the welcome frame.
         self._clear_content_frame()
 
@@ -687,6 +698,20 @@ class SimpleOptimizerApp(tk.Tk):
             activebackground=ModernTheme.SECONDARY_DARK,
             fg="white"
         )
+        
+        # Fix hover effects for custom styling
+        def screening_on_enter(e):
+            screening_btn.config(bg=ModernTheme.SECONDARY_DARK)
+            
+        def screening_on_leave(e):
+            screening_btn.config(bg=ModernTheme.SECONDARY)
+            
+        # Remove default hover handlers and add custom ones
+        screening_btn.unbind("<Enter>")
+        screening_btn.unbind("<Leave>")
+        screening_btn.bind("<Enter>", screening_on_enter)
+        screening_btn.bind("<Leave>", screening_on_leave)
+        
         screening_btn.pack(pady=(0, 16))
 
         # Secondary actions in a row
@@ -745,7 +770,7 @@ class SimpleOptimizerApp(tk.Tk):
         header_label.pack(pady=(0, 20))
 
         # Notebook widget to organize Parameters and Responses tabs.
-        notebook = ttk.Notebook(setup_frame)
+        notebook = ttk.Notebook(setup_frame, style="Modern.TNotebook")
         notebook.pack(fill=tk.BOTH, expand=True)
 
         # Parameters tab creation and addition to the notebook.
@@ -1462,7 +1487,7 @@ class SimpleOptimizerApp(tk.Tk):
         report_btn.pack(side=tk.RIGHT, padx=5)
 
         # Notebook widget to organize different control sections.
-        notebook = ttk.Notebook(parent)
+        notebook = ttk.Notebook(parent, style="Modern.TNotebook")
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         # Tab for displaying next experiment suggestions.
@@ -1864,7 +1889,7 @@ class SimpleOptimizerApp(tk.Tk):
         self.single_control_btn.bind("<Leave>", on_leave)
 
         # Notebook widget to organize different plot tabs.
-        self.plot_notebook = ttk.Notebook(parent)
+        self.plot_notebook = ttk.Notebook(parent, style="Modern.TNotebook")
         self.plot_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         self.plot_notebook.bind(
             "<<NotebookTabChanged>>", lambda event: self.update_all_plots()
@@ -2147,7 +2172,7 @@ class SimpleOptimizerApp(tk.Tk):
     def _build_model_diagnostics_tab(self, parent, params_config, responses_config):
         """Build Model Diagnostics plot tab with sub-tabs for Parity and Residuals plots."""
         # Notebook for sub-tabs
-        self.diagnostics_notebook = ttk.Notebook(parent)
+        self.diagnostics_notebook = ttk.Notebook(parent, style="Modern.TNotebook")
         self.diagnostics_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Parity Plot tab
@@ -2174,28 +2199,10 @@ class SimpleOptimizerApp(tk.Tk):
             figsize=(8, 8),  # Square aspect ratio
         )
 
-        # Controls for selecting response for Residuals Plot
-        controls_frame_res = tk.Frame(residuals_tab, bg="white")
-        controls_frame_res.pack(fill=tk.X, padx=5, pady=5)
-
-        tk.Label(controls_frame_res, text="Response:", bg="white").pack(
-            side=tk.LEFT, padx=5
-        )
+        # Initialize residuals response variable for automatic updates
         self.residuals_response_var = tk.StringVar(
             value=list(responses_config.keys())[0] if responses_config else ""
         )
-        ttk.Combobox(
-            controls_frame_res,
-            textvariable=self.residuals_response_var,
-            values=list(responses_config.keys()),
-            width=15,
-            state="readonly",
-        ).pack(side=tk.LEFT, padx=5)
-
-        update_btn_res = tk.Button(
-            controls_frame_res, text="Update", command=self.update_all_plots
-        )
-        update_btn_res.pack(side=tk.LEFT, padx=10)
 
         # Create plot with compact controls using helper method (in residuals_tab)
         self._create_plot_with_compact_controls(
@@ -2207,6 +2214,41 @@ class SimpleOptimizerApp(tk.Tk):
             responses_config=responses_config,
             figsize=(8, 8),  # Square aspect ratio
         )
+        
+        # Draw initial plot - either with existing data or placeholder
+        if hasattr(self, "residuals_fig"):
+            # Check if we have data and can create the actual plot
+            if (hasattr(self, 'controller') and self.controller and 
+                hasattr(self.controller, 'plot_manager') and self.controller.plot_manager):
+                try:
+                    # Try to create the actual residuals plot with existing data
+                    response_name = self.residuals_response_var.get()
+                    if response_name:
+                        self.controller.plot_manager.create_residuals_plot(
+                            self.residuals_fig, self.residuals_canvas, response_name
+                        )
+                        self.residuals_canvas.draw()
+                    else:
+                        # No response selected, show placeholder
+                        self._draw_residuals_placeholder()
+                except Exception as e:
+                    # If plot creation fails (no data), show placeholder
+                    logger.debug(f"Could not create initial residuals plot: {e}")
+                    self._draw_residuals_placeholder()
+            else:
+                # No controller/plot_manager available, show placeholder
+                self._draw_residuals_placeholder()
+    
+    def _draw_residuals_placeholder(self):
+        """Draw placeholder for residuals plot when no data is available"""
+        if hasattr(self, "residuals_fig"):
+            self.residuals_fig.clear()  # Clear any existing content
+            ax = self.residuals_fig.add_subplot(111)
+            ax.text(0.5, 0.5, "Residuals Plot\n(Data will appear when optimization data is available)", 
+                   ha='center', va='center', transform=ax.transAxes, 
+                   fontsize=12, color='gray')
+            ax.set_title("Model Residuals Analysis")
+            self.residuals_canvas.draw()
 
     def _build_sensitivity_analysis_tab(self, parent, params_config, responses_config):
         """Build Enhanced Sensitivity Analysis plot tab with method selection."""
@@ -3495,24 +3537,41 @@ class SimpleOptimizerApp(tk.Tk):
         """Get axis ranges from enhanced controls if available"""
         axis_ranges = {"x_range": None, "y_range": None, "z_range": None}
 
+        logger.info(f"Getting axis ranges for plot_type: {plot_type}")
+        logger.info(f"ENHANCED_CONTROLS_AVAILABLE: {ENHANCED_CONTROLS_AVAILABLE}")
+        logger.info(f"Has enhanced_controls attr: {hasattr(self, 'enhanced_controls')}")
+        
         if ENHANCED_CONTROLS_AVAILABLE and hasattr(self, "enhanced_controls"):
+            logger.info(f"Available control panels: {list(self.enhanced_controls.keys())}")
             control_panel = self.enhanced_controls.get(plot_type)
+            logger.info(f"Found control panel for {plot_type}: {control_panel is not None}")
+            
             if control_panel:
                 ranges = control_panel.get_axis_ranges()
+                logger.info(f"Raw ranges from control panel: {ranges}")
+                
                 for axis_name, (min_val, max_val, is_auto) in ranges.items():
+                    logger.info(f"Processing axis {axis_name}: min={min_val}, max={max_val}, auto={is_auto}")
                     if not is_auto and min_val is not None and max_val is not None:
                         if axis_name == "x_axis":
                             axis_ranges["x_range"] = (min_val, max_val)
+                            logger.info(f"Set x_range to: {axis_ranges['x_range']}")
                         elif axis_name == "y_axis":
                             axis_ranges["y_range"] = (min_val, max_val)
+                            logger.info(f"Set y_range to: {axis_ranges['y_range']}")
                         elif axis_name == "z_axis":
                             axis_ranges["z_range"] = (min_val, max_val)
+                            logger.info(f"Set z_range to: {axis_ranges['z_range']}")
 
+        logger.info(f"Final axis ranges for {plot_type}: {axis_ranges}")
         return axis_ranges
 
-    def update_all_plots(self):
-        """Update all plots - Enhanced version with axis range support"""
-        logger.debug("Entering update_all_plots")
+    def _validate_and_setup_plotting(self):
+        """Validate plotting components and return plot manager and current tab.
+        
+        Returns:
+            tuple: (plot_manager, current_tab) if valid, (None, None) if invalid
+        """
         if (
             not hasattr(self, "controller")
             or not self.controller
@@ -3521,208 +3580,311 @@ class SimpleOptimizerApp(tk.Tk):
             logger.warning(
                 "Plotting not available: controller or plot_manager missing."
             )
+            return None, None
+            
+        plot_manager = self.controller.plot_manager
+        current_tab = self.plot_notebook.tab(self.plot_notebook.select(), "text")
+        logger.debug(f"Current plot notebook tab: {current_tab}")
+        return plot_manager, current_tab
+
+    def _update_pareto_front_plot(self, plot_manager):
+        """Update the Pareto Front plot."""
+        if not hasattr(self, "pareto_fig"):
             return
-        try:
-            plot_manager = self.controller.plot_manager
-            current_tab = self.plot_notebook.tab(self.plot_notebook.select(), "text")
-            logger.debug(f"Current plot notebook tab: {current_tab}")
+            
+        logger.debug("Updating Pareto plot.")
+        pareto_X_df, pareto_obj_df, _ = (
+            self.controller.optimizer.get_pareto_front()
+        )
 
-            if current_tab == "Pareto Front":
-                if hasattr(self, "pareto_fig"):
-                    logger.debug("Updating Pareto plot.")
-                    pareto_X_df, pareto_obj_df, _ = (
-                        self.controller.optimizer.get_pareto_front()
-                    )
+        # Get axis ranges
+        ranges = self._get_axis_ranges("pareto")
 
-                    # Get axis ranges
-                    ranges = self._get_axis_ranges("pareto")
+        if not pareto_X_df.empty and not pareto_obj_df.empty:
+            plot_manager.create_pareto_plot(
+                self.pareto_fig,
+                self.pareto_canvas,
+                self.pareto_x_var.get(),
+                self.pareto_y_var.get(),
+                pareto_X_df,
+                pareto_obj_df,
+                x_range=ranges.get("x_range"),
+                y_range=ranges.get("y_range"),
+            )
+        else:
+            plot_manager.create_pareto_plot(
+                self.pareto_fig,
+                self.pareto_canvas,
+                self.pareto_x_var.get(),
+                self.pareto_y_var.get(),
+                pareto_X_df,
+                pareto_obj_df,
+                x_range=ranges.get("x_range"),
+                y_range=ranges.get("y_range"),
+            )
+        self.pareto_canvas.draw()
+        self.pareto_canvas.get_tk_widget().update()
 
-                    if not pareto_X_df.empty and not pareto_obj_df.empty:
-                        plot_manager.create_pareto_plot(
-                            self.pareto_fig,
-                            self.pareto_canvas,
-                            self.pareto_x_var.get(),
-                            self.pareto_y_var.get(),
-                            pareto_X_df,
-                            pareto_obj_df,
-                            x_range=ranges.get("x_range"),
-                            y_range=ranges.get("y_range"),
-                        )
+    def _update_progress_plot(self, plot_manager):
+        """Update the Progress plot."""
+        if not hasattr(self, "progress_fig"):
+            return
+            
+        logger.debug("Updating progress plot.")
+        
+        # Get axis ranges for progress plot
+        ranges = self._get_axis_ranges("progress")
+        
+        plot_manager.create_progress_plot(
+            self.progress_fig, 
+            self.progress_canvas,
+            x_range=ranges.get("x_range"),
+            y_range=ranges.get("y_range")
+        )
+        self.progress_canvas.draw()
+        self.progress_canvas.get_tk_widget().update()
+
+    def _update_gp_slice_plot(self, plot_manager):
+        """Update the GP Slice plot."""
+        if not hasattr(self, "gp_slice_fig"):
+            return
+            
+        logger.debug("Updating GP Slice plot.")
+        ranges = self._get_axis_ranges("gp_slice")
+        plot_manager.create_gp_slice_plot(
+            self.gp_slice_fig,
+            self.gp_slice_canvas,
+            self.gp_response_var.get(),
+            self.gp_param1_var.get(),
+            self.gp_param2_var.get(),
+            float(self.gp_fixed_value_var.get()),
+            x_range=ranges.get("x_range"),
+            y_range=ranges.get("y_range"),
+        )
+        self.gp_slice_canvas.draw()
+        self.gp_slice_canvas.get_tk_widget().update()
+
+    def _update_3d_surface_plot(self, plot_manager):
+        """Update the 3D Surface plot."""
+        if not hasattr(self, "surface_3d_fig"):
+            return
+            
+        logger.debug("Updating 3D Surface plot.")
+        ranges = self._get_axis_ranges("3d_surface")
+        
+        # Get surface settings from control panel if available
+        resolution = 60
+        plot_style = "surface"
+        show_uncertainty = False
+        show_contours = True
+        
+        # Try to get settings from 3D surface control panel
+        control_panel = self.enhanced_controls.get("3d_surface")
+        if control_panel and hasattr(control_panel, 'get_surface_settings'):
+            try:
+                settings = control_panel.get_surface_settings()
+                logger.debug(f"Retrieved surface settings: {settings}")
+                
+                # Map control panel settings to plot manager parameters
+                if settings:
+                    resolution = max(10, min(200, settings.get('x_resolution', 60)))
+                    show_contours = settings.get('show_contours', True)
+                    show_uncertainty = False  # Could be mapped to a setting if available
+                    
+                    # Determine plot style based on wireframe and surface_fill settings
+                    wireframe = settings.get('wireframe', False)
+                    surface_fill = settings.get('surface_fill', True)
+                    
+                    if wireframe and surface_fill:
+                        plot_style = "both"
+                    elif wireframe and not surface_fill:
+                        plot_style = "wireframe"
                     else:
-                        plot_manager.create_pareto_plot(
-                            self.pareto_fig,
-                            self.pareto_canvas,
-                            self.pareto_x_var.get(),
-                            self.pareto_y_var.get(),
-                            pareto_X_df,
-                            pareto_obj_df,
-                            x_range=ranges.get("x_range"),
-                            y_range=ranges.get("y_range"),
-                        )
-                self.pareto_canvas.draw()
-                self.pareto_canvas.get_tk_widget().update()
+                        plot_style = "surface"
+                
+                logger.info(f"Using 3D surface settings - resolution: {resolution}, style: {plot_style}, contours: {show_contours}")
+                
+            except Exception as e:
+                logger.warning(f"Error getting surface settings: {e}, using defaults")
+        
+        plot_manager.create_3d_surface_plot(
+            self.surface_3d_fig,
+            self.surface_3d_canvas,
+            self.surface_response_var.get(),
+            self.surface_param1_var.get(),
+            self.surface_param2_var.get(),
+            x_range=ranges.get("x_range"),
+            y_range=ranges.get("y_range"),
+            z_range=ranges.get("z_range"),
+            resolution=resolution,
+            plot_style=plot_style,
+            show_uncertainty=show_uncertainty,
+            show_contours=show_contours,
+        )
+        self.surface_3d_canvas.draw()
+        self.surface_3d_canvas.get_tk_widget().update()
 
-            if current_tab == "Progress":
-                if hasattr(self, "progress_fig"):
-                    logger.debug("Updating progress plot.")
-                    plot_manager.create_progress_plot(
-                        self.progress_fig, self.progress_canvas
-                    )
-                    self.progress_canvas.draw()
-                    self.progress_canvas.get_tk_widget().update()
+    def _update_parallel_coordinates_plot(self, plot_manager):
+        """Update the Parallel Coordinates plot."""
+        if not hasattr(self, "parallel_coords_fig"):
+            return
+            
+        logger.debug("Updating Parallel Coordinates plot.")
+        selected_vars = [
+            name
+            for name, var in self.parallel_coords_vars.items()
+            if var.get()
+        ]
+        plot_manager.create_parallel_coordinates_plot(
+            self.parallel_coords_fig,
+            self.parallel_coords_canvas,
+            selected_vars,
+        )
+        self.parallel_coords_canvas.draw()
+        self.parallel_coords_canvas.get_tk_widget().update()
 
-            if current_tab == "GP Slice":
-                if hasattr(self, "gp_slice_fig"):
-                    logger.debug("Updating GP Slice plot.")
-                    ranges = self._get_axis_ranges("gp_slice")
-                    plot_manager.create_gp_slice_plot(
-                        self.gp_slice_fig,
-                        self.gp_slice_canvas,
-                        self.gp_response_var.get(),
-                        self.gp_param1_var.get(),
-                        self.gp_param2_var.get(),
-                        float(self.gp_fixed_value_var.get()),
-                        x_range=ranges.get("x_range"),
-                        y_range=ranges.get("y_range"),
-                    )
-                    self.gp_slice_canvas.draw()
-                    self.gp_slice_canvas.get_tk_widget().update()
+    def _update_gp_uncertainty_map_plot(self, plot_manager):
+        """Update the GP Uncertainty Map plot."""
+        if not hasattr(self, "gp_uncertainty_map_fig"):
+            return
+            
+        logger.debug("Updating Enhanced GP Uncertainty Map plot.")
 
-            if current_tab == "3D Surface":
-                if hasattr(self, "surface_3d_fig"):
-                    logger.debug("Updating 3D Surface plot.")
-                    ranges = self._get_axis_ranges("3d_surface")
-                    plot_manager.create_3d_surface_plot(
-                        self.surface_3d_fig,
-                        self.surface_3d_canvas,
-                        self.surface_response_var.get(),
-                        self.surface_param1_var.get(),
-                        self.surface_param2_var.get(),
-                        x_range=ranges.get("x_range"),
-                        y_range=ranges.get("y_range"),
-                        z_range=ranges.get("z_range"),
-                    )
-                    self.surface_3d_canvas.draw()
-                    self.surface_3d_canvas.get_tk_widget().update()
+        # Get all the enhanced control values
+        plot_style = getattr(
+            self,
+            "gp_uncertainty_plot_style_var",
+            tk.StringVar(value="heatmap"),
+        ).get()
+        uncertainty_metric = getattr(
+            self,
+            "gp_uncertainty_metric_var",
+            tk.StringVar(value="data_density"),
+        ).get()
+        colormap = getattr(
+            self, "gp_uncertainty_colormap_var", tk.StringVar(value="Reds")
+        ).get()
+        resolution = int(
+            getattr(
+                self,
+                "gp_uncertainty_resolution_var",
+                tk.StringVar(value="70"),
+            ).get()
+        )
+        show_data = getattr(
+            self, "gp_uncertainty_show_data_var", tk.BooleanVar(value=True)
+        ).get()
 
-            if current_tab == "Parallel Coordinates":
-                if hasattr(self, "parallel_coords_fig"):
-                    logger.debug("Updating Parallel Coordinates plot.")
-                    selected_vars = [
-                        name
-                        for name, var in self.parallel_coords_vars.items()
-                        if var.get()
-                    ]
-                    plot_manager.create_parallel_coordinates_plot(
-                        self.parallel_coords_fig,
-                        self.parallel_coords_canvas,
-                        selected_vars,
-                    )
-                    self.parallel_coords_canvas.draw()
-                    self.parallel_coords_canvas.get_tk_widget().update()
+        plot_manager.create_gp_uncertainty_map(
+            self.gp_uncertainty_map_fig,
+            self.gp_uncertainty_map_canvas,
+            self.gp_uncertainty_response_var.get(),
+            self.gp_uncertainty_param1_var.get(),
+            self.gp_uncertainty_param2_var.get(),
+            plot_style=plot_style,
+            uncertainty_metric=uncertainty_metric,
+            colormap=colormap,
+            resolution=resolution,
+            show_experimental_data=show_data,
+        )
+        self.gp_uncertainty_map_canvas.draw()
+        self.gp_uncertainty_map_canvas.get_tk_widget().update()
 
-            if current_tab == "GP Uncertainty Map":
-                if hasattr(self, "gp_uncertainty_map_fig"):
-                    logger.debug("Updating Enhanced GP Uncertainty Map plot.")
+    def _update_model_diagnostics_plots(self, plot_manager):
+        """Update the Model Diagnostics plots based on selected sub-tab."""
+        # Determine which sub-tab is active within Model Diagnostics
+        if not hasattr(self, "diagnostics_notebook") or not self.diagnostics_notebook:
+            logger.warning("Diagnostics notebook not found or not available")
+            return
+            
+        logger.debug("Found diagnostics notebook, checking sub-tab")
+        selected_diagnostics_tab_id = self.diagnostics_notebook.select()
+        selected_diagnostics_tab_text = self.diagnostics_notebook.tab(
+            selected_diagnostics_tab_id, "text"
+        )
+        logger.debug(
+            f"Selected diagnostics sub-tab: {selected_diagnostics_tab_text}"
+        )
 
-                    # Get all the enhanced control values
-                    plot_style = getattr(
-                        self,
-                        "gp_uncertainty_plot_style_var",
-                        tk.StringVar(value="heatmap"),
-                    ).get()
-                    uncertainty_metric = getattr(
-                        self,
-                        "gp_uncertainty_metric_var",
-                        tk.StringVar(value="data_density"),
-                    ).get()
-                    colormap = getattr(
-                        self, "gp_uncertainty_colormap_var", tk.StringVar(value="Reds")
-                    ).get()
-                    resolution = int(
-                        getattr(
-                            self,
-                            "gp_uncertainty_resolution_var",
-                            tk.StringVar(value="70"),
-                        ).get()
-                    )
-                    show_data = getattr(
-                        self, "gp_uncertainty_show_data_var", tk.BooleanVar(value=True)
-                    ).get()
+        if selected_diagnostics_tab_text == "Parity Plot":
+            if hasattr(self, "parity_fig"):
+                logger.debug("Updating Parity Plot.")
+                response_name = self.parity_response_var.get()
+                plot_manager.create_parity_plot(
+                    self.parity_fig, self.parity_canvas, response_name
+                )
+                self.parity_canvas.draw()
+                self.parity_canvas.get_tk_widget().update()
+        elif selected_diagnostics_tab_text == "Residuals Plot":
+            if hasattr(self, "residuals_fig"):
+                logger.debug("Updating Residuals Plot.")
+                response_name = self.residuals_response_var.get()
+                plot_manager.create_residuals_plot(
+                    self.residuals_fig, self.residuals_canvas, response_name
+                )
+                self.residuals_canvas.draw()
+                self.residuals_canvas.get_tk_widget().update()
 
-                    plot_manager.create_gp_uncertainty_map(
-                        self.gp_uncertainty_map_fig,
-                        self.gp_uncertainty_map_canvas,
-                        self.gp_uncertainty_response_var.get(),
-                        self.gp_uncertainty_param1_var.get(),
-                        self.gp_uncertainty_param2_var.get(),
-                        plot_style=plot_style,
-                        uncertainty_metric=uncertainty_metric,
-                        colormap=colormap,
-                        resolution=resolution,
-                        show_experimental_data=show_data,
-                    )
-                    self.gp_uncertainty_map_canvas.draw()
-                    self.gp_uncertainty_map_canvas.get_tk_widget().update()
+    def _update_sensitivity_analysis_plot(self, plot_manager):
+        """Update the Sensitivity Analysis plot."""
+        if not hasattr(self, "sensitivity_fig"):
+            return
+            
+        logger.debug("Updating Sensitivity Analysis plot.")
+        response_name = self.sensitivity_response_var.get()
 
-            if current_tab == "Model Diagnostics":
-                # Determine which sub-tab is active within Model Diagnostics
-                if hasattr(self, "diagnostics_notebook") and self.diagnostics_notebook:
-                    logger.debug("Found diagnostics notebook, checking sub-tab")
-                    selected_diagnostics_tab_id = self.diagnostics_notebook.select()
-                    selected_diagnostics_tab_text = self.diagnostics_notebook.tab(
-                        selected_diagnostics_tab_id, "text"
-                    )
-                    logger.debug(
-                        f"Selected diagnostics sub-tab: {selected_diagnostics_tab_text}"
-                    )
+        # Get selected method and parameters
+        method_display = self.sensitivity_method_var.get()
+        method_code = self.sensitivity_method_mapping.get(
+            method_display, "variance"
+        )
+        n_samples = int(self.sensitivity_samples_var.get())
 
-                    if selected_diagnostics_tab_text == "Parity Plot":
-                        if hasattr(self, "parity_fig"):
-                            logger.debug("Updating Parity Plot.")
-                            response_name = self.parity_response_var.get()
-                            plot_manager.create_parity_plot(
-                                self.parity_fig, self.parity_canvas, response_name
-                            )
-                            self.parity_canvas.draw()
-                            self.parity_canvas.get_tk_widget().update()
-                    elif selected_diagnostics_tab_text == "Residuals Plot":
-                        if hasattr(self, "residuals_fig"):
-                            logger.debug("Updating Residuals Plot.")
-                            response_name = self.residuals_response_var.get()
-                            plot_manager.create_residuals_plot(
-                                self.residuals_fig, self.residuals_canvas, response_name
-                            )
-                            self.residuals_canvas.draw()
-                            self.residuals_canvas.get_tk_widget().update()
-                else:
-                    logger.warning("Diagnostics notebook not found or not available")
+        logger.debug(
+            f"Using sensitivity method: {method_code} with {n_samples} samples"
+        )
 
-            if current_tab == "Sensitivity Analysis":
-                if hasattr(self, "sensitivity_fig"):
-                    logger.debug("Updating Sensitivity Analysis plot.")
-                    response_name = self.sensitivity_response_var.get()
+        plot_manager.create_sensitivity_analysis_plot(
+            self.sensitivity_fig,
+            self.sensitivity_canvas,
+            response_name,
+            method=method_code,
+            n_samples=n_samples,
+        )
+        self.sensitivity_canvas.draw()
+        self.sensitivity_canvas.get_tk_widget().update()
 
-                    # Get selected method and parameters
-                    method_display = self.sensitivity_method_var.get()
-                    method_code = self.sensitivity_method_mapping.get(
-                        method_display, "variance"
-                    )
-                    n_samples = int(self.sensitivity_samples_var.get())
-
-                    logger.debug(
-                        f"Using sensitivity method: {method_code} with {n_samples} samples"
-                    )
-
-                    plot_manager.create_sensitivity_analysis_plot(
-                        self.sensitivity_fig,
-                        self.sensitivity_canvas,
-                        response_name,
-                        method=method_code,
-                        n_samples=n_samples,
-                    )
-                    self.sensitivity_canvas.draw()
-                    self.sensitivity_canvas.get_tk_widget().update()
+    def update_all_plots(self):
+        """Update all plots based on the currently selected tab.
+        
+        This method serves as the main orchestrator for plot updates, delegating
+        to specific plot update methods based on the active tab.
+        """
+        logger.debug("Entering update_all_plots")
+        plot_manager, current_tab = self._validate_and_setup_plotting()
+        if not plot_manager:
+            return
+            
+        try:
+            # Map tab names to their corresponding update methods
+            plot_updaters = {
+                "Pareto Front": lambda: self._update_pareto_front_plot(plot_manager),
+                "Progress": lambda: self._update_progress_plot(plot_manager),
+                "GP Slice": lambda: self._update_gp_slice_plot(plot_manager),
+                "3D Surface": lambda: self._update_3d_surface_plot(plot_manager),
+                "Parallel Coordinates": lambda: self._update_parallel_coordinates_plot(plot_manager),
+                "GP Uncertainty Map": lambda: self._update_gp_uncertainty_map_plot(plot_manager),
+                "Model Diagnostics": lambda: self._update_model_diagnostics_plots(plot_manager),
+                "Sensitivity Analysis": lambda: self._update_sensitivity_analysis_plot(plot_manager),
+            }
+            
+            # Update the plot for the current tab
+            updater = plot_updaters.get(current_tab)
+            if updater:
+                updater()
+            else:
+                logger.warning(f"No updater found for tab: {current_tab}")
+                
         except Exception as e:
             logger.error(f"Error updating plots: {e}", exc_info=True)
         finally:
@@ -3794,7 +3956,7 @@ class SimpleOptimizerApp(tk.Tk):
         content_frame.pack(fill=tk.BOTH, expand=True)
 
         # Notebook widget to organize tabs
-        notebook = ttk.Notebook(content_frame)
+        notebook = ttk.Notebook(content_frame, style="Modern.TNotebook")
         notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         # Parameters tab

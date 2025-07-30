@@ -170,16 +170,37 @@ class MovablePlotControlPanel:
     def get_axis_ranges(self):
         """Get current axis range settings"""
         ranges = {}
-        for axis_name, axis_data in self.axis_ranges.items():
-            value = axis_data['var'].get()
-            is_auto = value.lower() == 'auto'
-            try:
-                numeric_value = float(value) if not is_auto else None
-            except ValueError:
-                numeric_value = None
-                is_auto = True
-            ranges[axis_name] = (numeric_value, numeric_value, is_auto)
+        
+        # Collect min/max values for each axis
+        x_min_val, x_max_val, x_auto = self._get_axis_value('x_min')
+        y_min_val, y_max_val, y_auto = self._get_axis_value('y_min')
+        
+        # Format for main GUI expectation: (min_val, max_val, is_auto)
+        ranges['x_axis'] = (x_min_val, x_max_val, x_auto)
+        ranges['y_axis'] = (y_min_val, y_max_val, y_auto)
+        
         return ranges
+    
+    def _get_axis_value(self, axis_key):
+        """Helper to get axis values and determine if auto"""
+        if axis_key.endswith('_min'):
+            base_axis = axis_key[:-4]  # Remove '_min'
+            min_value = self.axis_ranges[f'{base_axis}_min']['var'].get()
+            max_value = self.axis_ranges[f'{base_axis}_max']['var'].get()
+            
+            min_auto = min_value.lower() == 'auto'
+            max_auto = max_value.lower() == 'auto'
+            is_auto = min_auto or max_auto
+            
+            try:
+                min_val = None if min_auto else float(min_value)
+                max_val = None if max_auto else float(max_value)
+            except ValueError:
+                min_val = max_val = None
+                is_auto = True
+                
+            return min_val, max_val, is_auto
+        return None, None, True
 
 
 def create_movable_plot_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 

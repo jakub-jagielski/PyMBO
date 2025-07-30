@@ -73,11 +73,15 @@ class CompactPlotControlPanel:
         x_min_entry = tk.Entry(x_frame, textvariable=self.axis_ranges['x_min']['var'], 
                               width=6, font=('Arial', 7))
         x_min_entry.pack(side=tk.LEFT, padx=2)
+        x_min_entry.bind('<Return>', self._on_axis_change)
+        x_min_entry.bind('<FocusOut>', self._on_axis_change)
         
         tk.Label(x_frame, text="to", bg='lightgray', font=('Arial', 7)).pack(side=tk.LEFT)
         x_max_entry = tk.Entry(x_frame, textvariable=self.axis_ranges['x_max']['var'], 
                               width=6, font=('Arial', 7))
         x_max_entry.pack(side=tk.LEFT, padx=2)
+        x_max_entry.bind('<Return>', self._on_axis_change)
+        x_max_entry.bind('<FocusOut>', self._on_axis_change)
         
         # Y-axis row
         y_frame = tk.Frame(parent, bg='lightgray')
@@ -87,11 +91,15 @@ class CompactPlotControlPanel:
         y_min_entry = tk.Entry(y_frame, textvariable=self.axis_ranges['y_min']['var'], 
                               width=6, font=('Arial', 7))
         y_min_entry.pack(side=tk.LEFT, padx=2)
+        y_min_entry.bind('<Return>', self._on_axis_change)
+        y_min_entry.bind('<FocusOut>', self._on_axis_change)
         
         tk.Label(y_frame, text="to", bg='lightgray', font=('Arial', 7)).pack(side=tk.LEFT)
         y_max_entry = tk.Entry(y_frame, textvariable=self.axis_ranges['y_max']['var'], 
                               width=6, font=('Arial', 7))
         y_max_entry.pack(side=tk.LEFT, padx=2)
+        y_max_entry.bind('<Return>', self._on_axis_change)
+        y_max_entry.bind('<FocusOut>', self._on_axis_change)
     
     def _create_compact_buttons(self, parent):
         """Create compact action buttons"""
@@ -106,12 +114,25 @@ class CompactPlotControlPanel:
                                font=('Arial', 7), width=6)
         refresh_btn.pack(side=tk.RIGHT, padx=1)
     
+    def _on_axis_change(self, event=None):
+        """Handle axis range changes - update plot immediately"""
+        logger.info(f"Axis range changed for {self.plot_type}")
+        # Update auto flags based on current values
+        for axis_key in self.axis_ranges:
+            value = self.axis_ranges[axis_key]['var'].get()
+            self.axis_ranges[axis_key]['auto'] = value.lower() == 'auto'
+        
+        # Trigger plot update
+        self._refresh_plot()
+    
     def _auto_scale(self):
         """Reset axis ranges to auto"""
         for axis in self.axis_ranges:
             self.axis_ranges[axis]['var'].set('auto')
             self.axis_ranges[axis]['auto'] = True
         logger.info(f"Auto scale applied for {self.plot_type}")
+        # Immediately refresh plot
+        self._refresh_plot()
     
     def _refresh_plot(self):
         """Refresh the plot with current settings"""
@@ -122,6 +143,8 @@ class CompactPlotControlPanel:
                 logger.info(f"Update callback executed for {self.plot_type}")
             except Exception as e:
                 logger.error(f"Error calling update callback for {self.plot_type}: {e}")
+        else:
+            logger.warning(f"No update callback available for {self.plot_type}")
     
     def show(self):
         """Show the compact control panel"""
@@ -143,16 +166,37 @@ class CompactPlotControlPanel:
     def get_axis_ranges(self):
         """Get current axis range settings"""
         ranges = {}
-        for axis_name, axis_data in self.axis_ranges.items():
-            value = axis_data['var'].get()
-            is_auto = value.lower() == 'auto'
-            try:
-                numeric_value = float(value) if not is_auto else None
-            except ValueError:
-                numeric_value = None
-                is_auto = True
-            ranges[axis_name] = (numeric_value, numeric_value, is_auto)
+        
+        # Collect min/max values for each axis
+        x_min_val, x_max_val, x_auto = self._get_axis_value('x_min')
+        y_min_val, y_max_val, y_auto = self._get_axis_value('y_min')
+        
+        # Format for main GUI expectation: (min_val, max_val, is_auto)
+        ranges['x_axis'] = (x_min_val, x_max_val, x_auto)
+        ranges['y_axis'] = (y_min_val, y_max_val, y_auto)
+        
         return ranges
+    
+    def _get_axis_value(self, axis_key):
+        """Helper to get axis values and determine if auto"""
+        if axis_key.endswith('_min'):
+            base_axis = axis_key[:-4]  # Remove '_min'
+            min_value = self.axis_ranges[f'{base_axis}_min']['var'].get()
+            max_value = self.axis_ranges[f'{base_axis}_max']['var'].get()
+            
+            min_auto = min_value.lower() == 'auto'
+            max_auto = max_value.lower() == 'auto'
+            is_auto = min_auto or max_auto
+            
+            try:
+                min_val = None if min_auto else float(min_value)
+                max_val = None if max_auto else float(max_value)
+            except ValueError:
+                min_val = max_val = None
+                is_auto = True
+                
+            return min_val, max_val, is_auto
+        return None, None, True
 
 
 def create_compact_plot_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 
