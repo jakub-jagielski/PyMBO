@@ -1,7 +1,7 @@
 """
 PyMBO - Python Multi-objective Bayesian Optimization Main Application
 
-This is the main entry point for PyMBO v3.1.2.
+This is the main entry point for PyMBO v3.1.3.
 It provides advanced Bayesian optimization with acquisition function visualization,
 enhanced plotting capabilities, and flexible control panel interfaces.
 
@@ -35,7 +35,7 @@ matplotlib.use("TkAgg")
 
 # Configuration constants
 APP_NAME = "PyMBO - Python Multi-objective Bayesian Optimization"
-APP_VERSION = "3.1.2"
+APP_VERSION = "3.1.3"
 LOG_DIR = Path("logs")
 LOG_FILE = "optimization_enhanced.log"
 
@@ -401,28 +401,7 @@ Technical details:
 
         logger.info("Starting main application loop...")
         
-        # Show startup message about new features (optional)
-        try:
-            if 'plotting' in app_modules:  # Only show if enhanced features available
-                startup_msg = f"""🎆 Enhanced Features Available!
-
-{APP_NAME} v{APP_VERSION} includes:
-
-• Acquisition Function Heatmap - visualize optimization sampling strategy
-• Enhanced plotting with improved parameter space visualization  
-• Interactive control panels with fixed aspect ratios
-• Real-time Bayesian optimization with PyTorch/BoTorch
-• Multi-objective optimization support
-
-📊 The Acquisition Function tab shows where the optimizer
-will most likely suggest new experiments.
-
-🔧 Control panels maintain aspect ratios for better visualization."""
-                
-                messagebox.showinfo("Enhanced Laboratory Ready", startup_msg)
-        except Exception as msg_e:
-            logger.debug(f"Startup message failed: {msg_e}")
-            # Don't fail application if message box doesn't work
+        # Startup message removed for cleaner user experience
 
         # Start main application loop
         try:
