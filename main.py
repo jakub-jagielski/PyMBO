@@ -1,7 +1,7 @@
 """
 PyMBO - Python Multi-objective Bayesian Optimization Main Application
 
-This is the main entry point for PyMBO v3.1.3.
+This is the main entry point for PyMBO v3.1.5.
 It provides advanced Bayesian optimization with acquisition function visualization,
 enhanced plotting capabilities, and flexible control panel interfaces.
 
@@ -33,7 +33,7 @@ import warnings
 
 # Configuration constants
 APP_NAME = "PyMBO - Python Multi-objective Bayesian Optimization"
-APP_VERSION = "3.1.3"
+APP_VERSION = "3.1.5"
 LOG_DIR = Path("logs")
 LOG_FILE = "optimization_enhanced.log"
 
