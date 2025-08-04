@@ -85,7 +85,7 @@ except ImportError:
     print("Enhanced plot controls not available - using basic controls")
 
 # Configuration constants
-APP_TITLE = "Multi-Objective Optimization Laboratory v3.1.4"
+APP_TITLE = "Multi-Objective Optimization Laboratory v3.1.5"
 MIN_WINDOW_WIDTH = 1200
 MIN_WINDOW_HEIGHT = 800
 DEFAULT_WINDOW_WIDTH = 1400
@@ -183,7 +183,7 @@ class SimpleOptimizerApp(tk.Tk):
         super().__init__()
 
         # Configure modern window appearance
-        self.title("Multi-Objective Optimization Laboratory v3.1.4")
+        self.title("Multi-Objective Optimization Laboratory v3.1.5")
         self.geometry("1600x1000")  # Larger default size for better content visibility
         self.minsize(1200, 800)  # Increased minimum size
         self.configure(bg=ModernTheme.BACKGROUND)
@@ -561,7 +561,7 @@ class SimpleOptimizerApp(tk.Tk):
         # Version badge
         version_label = tk.Label(
             header_content,
-            text="v3.1.4",
+            text="v3.1.5",
             bg=ModernTheme.PRIMARY_LIGHT,
             fg=ModernTheme.PRIMARY,
             font=ModernTheme.get_font(10, "bold"),
