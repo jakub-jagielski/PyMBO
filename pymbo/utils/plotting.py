@@ -51,6 +51,10 @@ class SimplePlotManager:
         pareto_objectives_df,
         x_range=None,
         y_range=None,
+        show_all_solutions=True,
+        show_pareto_points=True,
+        show_pareto_front=True,
+        show_legend=True,
     ):
         """Create Pareto front plot"""
         fig.clear()
@@ -83,21 +87,23 @@ class SimplePlotManager:
 
             ax = fig.add_subplot(111)
 
-            # Plot all points
-            ax.scatter(
-                all_objectives_df[x_obj],
-                all_objectives_df[y_obj],
-                c="lightblue",
-                s=50,
-                alpha=0.6,
-                label="All Solutions",
-                edgecolors="navy",
-                linewidths=0.5,
-            )
+            # Plot all points (if enabled)
+            if show_all_solutions:
+                ax.scatter(
+                    all_objectives_df[x_obj],
+                    all_objectives_df[y_obj],
+                    c="lightblue",
+                    s=50,
+                    alpha=0.6,
+                    label="All Solutions",
+                    edgecolors="navy",
+                    linewidths=0.5,
+                )
 
-            # Plot Pareto optimal points
+            # Plot Pareto optimal points (if enabled)
             if (
-                not pareto_objectives_df.empty
+                show_pareto_points
+                and not pareto_objectives_df.empty
                 and x_obj in pareto_objectives_df
                 and y_obj in pareto_objectives_df
             ):
@@ -113,8 +119,8 @@ class SimplePlotManager:
                     linewidths=1,
                 )
 
-                # Connect Pareto points
-                if len(pareto_objectives_df) > 1:
+                # Connect Pareto points (if front line is enabled)
+                if show_pareto_front and len(pareto_objectives_df) > 1:
                     pareto_sorted = pareto_objectives_df.sort_values(x_obj)
                     ax.plot(
                         pareto_sorted[x_obj],
@@ -130,7 +136,10 @@ class SimplePlotManager:
             ax.set_ylabel(y_obj, fontsize=12, fontweight="bold")
             ax.set_title("Pareto Front Analysis", fontsize=14, fontweight="bold")
             ax.grid(True, alpha=0.3)
-            ax.legend(loc="best")
+            
+            # Show legend only if enabled
+            if show_legend:
+                ax.legend(loc="best")
 
             # Apply axis ranges if specified
             if (
@@ -176,7 +185,8 @@ class SimplePlotManager:
         if canvas:
             canvas.draw()
 
-    def create_progress_plot(self, fig, canvas, x_range=None, y_range=None):
+    def create_progress_plot(self, fig, canvas, x_range=None, y_range=None, 
+                           show_raw_hv=True, show_normalized_hv=True, show_trend=True, show_legend=True):
         """Create optimization progress plot with axis range support"""
         fig.clear()
 
@@ -213,23 +223,26 @@ class SimplePlotManager:
 
             hypervolumes = np.array(hypervolumes)
 
-            # Plot hypervolume evolution
-            ax.plot(
-                iterations,
-                hypervolumes,
-                "b-o",
-                linewidth=2,
-                markersize=6,
-                markerfacecolor="lightblue",
-                markeredgecolor="blue",
-                label="Raw Hypervolume",
-            )
+            # Plot hypervolume evolution (if enabled)
+            if show_raw_hv:
+                ax.plot(
+                    iterations,
+                    hypervolumes,
+                    "b-o",
+                    linewidth=2,
+                    markersize=6,
+                    markerfacecolor="lightblue",
+                    markeredgecolor="blue",
+                    label="Raw Hypervolume",
+                )
 
-            # If we have enhanced format, also plot normalized hypervolume on secondary axis
+            # Handle normalized hypervolume plotting
             has_normalized = any(
                 isinstance(row["hypervolume"], dict) for _, row in history_df.iterrows()
             )
-            if has_normalized:
+            ax2 = None
+            
+            if has_normalized and show_normalized_hv:
                 normalized_hvs = []
                 for _, row in history_df.iterrows():
                     hv_value = row["hypervolume"]
@@ -244,43 +257,86 @@ class SimplePlotManager:
 
                 normalized_hvs = np.array(normalized_hvs)
 
-                # Create secondary y-axis for normalized hypervolume
-                ax2 = ax.twinx()
-                ax2.plot(
-                    iterations,
-                    normalized_hvs,
-                    "r-s",
-                    linewidth=2,
-                    markersize=4,
-                    markerfacecolor="lightcoral",
-                    markeredgecolor="red",
-                    label="Normalized HV",
-                    alpha=0.8,
-                )
-                ax2.set_ylabel(
-                    "Normalized Hypervolume (0-1)",
-                    fontsize=12,
-                    fontweight="bold",
-                    color="red",
-                )
-                ax2.tick_params(axis="y", labelcolor="red")
-                ax2.set_ylim(-0.05, 1.05)  # Set normalized range
+                if show_raw_hv:
+                    # Both raw and normalized HV: use secondary axis for normalized
+                    ax2 = ax.twinx()
+                    ax2.plot(
+                        iterations,
+                        normalized_hvs,
+                        "r-s",
+                        linewidth=2,
+                        markersize=4,
+                        markerfacecolor="lightcoral",
+                        markeredgecolor="red",
+                        label="Normalized HV",
+                        alpha=0.8,
+                    )
+                    ax2.set_ylabel(
+                        "Normalized Hypervolume (0-1)",
+                        fontsize=12,
+                        fontweight="bold",
+                        color="red",
+                    )
+                    ax2.tick_params(axis="y", labelcolor="red")
+                    ax2.set_ylim(-0.05, 1.05)  # Set normalized range
+                    
+                    # Don't create separate legend here - will be combined later
+                else:
+                    # Only normalized HV: use primary axis
+                    ax.plot(
+                        iterations,
+                        normalized_hvs,
+                        "r-s",
+                        linewidth=2,
+                        markersize=4,
+                        markerfacecolor="lightcoral",
+                        markeredgecolor="red",
+                        label="Normalized HV",
+                        alpha=0.8,
+                    )
 
-                # Add legend for secondary axis
-                ax2.legend(loc="upper right")
-
-            # Add trend line if enough data
-            if len(iterations) > 3:
-                z = np.polyfit(iterations, hypervolumes, min(2, len(iterations) - 1))
-                p = np.poly1d(z)
-                ax.plot(iterations, p(iterations), "r--", alpha=0.8, label="Trend")
+            # Add trend line if enough data (if enabled)
+            if show_trend and len(iterations) > 3:
+                # Use appropriate data for trend calculation
+                if show_raw_hv:
+                    trend_data = hypervolumes
+                elif show_normalized_hv and has_normalized and 'normalized_hvs' in locals():
+                    # Use normalized data if only normalized is shown
+                    trend_data = normalized_hvs
+                else:
+                    trend_data = hypervolumes  # fallback
+                
+                if len(trend_data) > 3:  # Ensure we have enough data points
+                    z = np.polyfit(iterations, trend_data, min(2, len(iterations) - 1))
+                    p = np.poly1d(z)
+                    ax.plot(iterations, p(iterations), "g--", alpha=0.8, label="Trend", linewidth=1.5)
 
             # Format plot
             ax.set_xlabel("Experiment Number", fontsize=12, fontweight="bold")
-            ax.set_ylabel("Hypervolume", fontsize=12, fontweight="bold")
+            
+            # Adjust y-axis label based on what's being displayed
+            if show_raw_hv and not show_normalized_hv:
+                ax.set_ylabel("Raw Hypervolume", fontsize=12, fontweight="bold")
+            elif show_normalized_hv and not show_raw_hv:
+                # When only normalized HV is shown, use it on the primary axis
+                ax.set_ylabel("Normalized Hypervolume (0-1)", fontsize=12, fontweight="bold")
+                ax.set_ylim(-0.05, 1.05)  # Set normalized range on primary axis
+            else:
+                ax.set_ylabel("Hypervolume", fontsize=12, fontweight="bold")
+            
             ax.set_title("Optimization Progress", fontsize=14, fontweight="bold")
             ax.grid(True, alpha=0.3)
-            ax.legend()
+            
+            # Handle legend positioning to avoid overlap
+            if show_legend:
+                if ax2 is not None:
+                    # Both axes have data - combine legends to avoid overlap
+                    lines1, labels1 = ax.get_legend_handles_labels()
+                    lines2, labels2 = ax2.get_legend_handles_labels()
+                    ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+                else:
+                    # Only primary axis has data
+                    ax.legend(loc='best')
 
             # Apply axis ranges if specified (before dynamic limits)
             if (
@@ -300,7 +356,8 @@ class SimplePlotManager:
                 ax.set_ylim(y_range[0], y_range[1])
             else:
                 # Dynamically set y-axis limits for better visualization only if not manually set
-                if len(hypervolumes) > 0:
+                # Skip dynamic scaling if only normalized HV is shown (already set to 0-1 range)
+                if show_raw_hv and len(hypervolumes) > 0:
                     min_hypervolume = np.min(hypervolumes)
                     max_hypervolume = np.max(hypervolumes)
                     y_range_dynamic = max_hypervolume - min_hypervolume
@@ -321,8 +378,8 @@ class SimplePlotManager:
             ):
                 convergence_info = latest_iteration["convergence_analysis"]
 
-            # Add improvement indicators
-            if len(hypervolumes) > 1:
+            # Add improvement indicators (only if appropriate data is shown)
+            if show_raw_hv and len(hypervolumes) > 1:
                 improvements = np.diff(hypervolumes)
                 significant_improvements = np.where(
                     improvements > np.std(improvements)
@@ -335,6 +392,29 @@ class SimplePlotManager:
                     ax.annotate(
                         f"Improvement",
                         xy=(iterations[idx + 1], hypervolumes[idx + 1]),
+                        xytext=(10, 10),
+                        textcoords="offset points",
+                        fontsize=8,
+                        alpha=0.8,
+                        bbox=dict(
+                            boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7
+                        ),
+                        arrowprops=dict(arrowstyle="->", alpha=0.5),
+                    )
+            elif show_normalized_hv and not show_raw_hv and has_normalized and 'normalized_hvs' in locals() and len(normalized_hvs) > 1:
+                # Show improvement indicators for normalized HV when only normalized is displayed
+                improvements = np.diff(normalized_hvs)
+                significant_improvements = np.where(
+                    improvements > np.std(improvements)
+                )[0]
+
+                num_flags_to_show = min(10, max(3, len(iterations) // 3))
+                for idx in significant_improvements[
+                    :num_flags_to_show
+                ]:  # Limit annotations dynamically
+                    ax.annotate(
+                        f"Improvement",
+                        xy=(iterations[idx + 1], normalized_hvs[idx + 1]),
                         xytext=(10, 10),
                         textcoords="offset points",
                         fontsize=8,
@@ -759,6 +839,16 @@ class SimplePlotManager:
         fixed_value,
         x_range=None,
         y_range=None,
+        show_mean_line=True,
+        show_68_ci=True,
+        show_95_ci=True,
+        show_data_points=True,
+        show_legend=True,
+        show_grid=True,
+        show_diagnostics=True,
+        mean_line_style="solid",
+        ci_transparency="medium",
+        data_point_size="medium"
     ):
         """Create enhanced GP slice plot showing response vs one parameter with improved mathematical correctness"""
         fig.clear()
@@ -851,14 +941,32 @@ class SimplePlotManager:
             # Adjust x_plot length to match predictions
             x_plot_adj = x_plot[: len(means)]
 
-            # Mean prediction with enhanced styling
-            ax.plot(x_plot_adj, means, "b-", linewidth=2.5, label="GP Mean", zorder=3)
+            # Plot elements based on control panel settings
+            legend_elements = []
+            
+            # Mean prediction line
+            if show_mean_line:
+                line_styles = {'solid': '-', 'dashed': '--', 'dotted': ':', 'dashdot': '-.'}
+                line_style = line_styles.get(mean_line_style, '-')
+                line = ax.plot(x_plot_adj, means, line_style, color="blue", 
+                              linewidth=2.5, label="GP Mean", zorder=3)[0]
+                legend_elements.append(line)
 
-            # Multiple confidence intervals
-            confidence_levels = [0.68, 0.95]
-            colors = ["lightblue", "lightcoral"]
-            alphas = [0.3, 0.2]
-
+            # Confidence intervals
+            confidence_levels = []
+            colors = []
+            
+            if show_68_ci:
+                confidence_levels.append(0.68)
+                colors.append("lightblue")
+            if show_95_ci:
+                confidence_levels.append(0.95)
+                colors.append("lightcoral")
+            
+            # Set transparency based on control panel
+            transparency_map = {'low': 0.15, 'medium': 0.3, 'high': 0.5}
+            base_alpha = transparency_map.get(ci_transparency, 0.3)
+            
             for i, conf_level in enumerate(confidence_levels):
                 if i >= len(colors):
                     break
@@ -868,25 +976,34 @@ class SimplePlotManager:
                 ci_lower = means - z_score * stds
                 ci_upper = means + z_score * stds
 
-                ax.fill_between(
+                # Adjust alpha for multiple CIs
+                alpha = base_alpha * (0.8 if i > 0 else 1.0)
+                
+                fill = ax.fill_between(
                     x_plot_adj,
                     ci_lower,
                     ci_upper,
                     color=colors[i],
-                    alpha=alphas[i],
+                    alpha=alpha,
                     label=f"{conf_level*100:.0f}% Confidence",
                     zorder=1,
                 )
+                legend_elements.append(fill)
 
             # Add experimental data points with intelligent filtering
-            self._add_filtered_experimental_data(
-                ax,
-                param1_name,
-                param2_name,
-                response_name,
-                fixed_param_value,
-                tolerance=0.1,
-            )
+            if show_data_points:
+                size_map = {'small': 30, 'medium': 50, 'large': 80}
+                point_size = size_map.get(data_point_size, 50)
+                
+                self._add_filtered_experimental_data(
+                    ax,
+                    param1_name,
+                    param2_name,
+                    response_name,
+                    fixed_param_value,
+                    tolerance=0.1,
+                    marker_size=point_size
+                )
 
             # Enhanced formatting with units
             param1_units = param1_config.get("units", "")
@@ -915,10 +1032,13 @@ class SimplePlotManager:
             title += f"(Fixed: {param2_name} = {fixed_param_value:.3f} {param2_units})"
             ax.set_title(title, fontsize=12, fontweight="bold")
 
-            # Enhanced grid and styling
-            ax.grid(True, alpha=0.3, linestyle="-", linewidth=0.5)
-            ax.grid(True, alpha=0.15, linestyle="--", linewidth=0.3, which="minor")
-            ax.minorticks_on()
+            # Grid styling based on control panel
+            if show_grid:
+                ax.grid(True, alpha=0.3, linestyle="-", linewidth=0.5)
+                ax.grid(True, alpha=0.15, linestyle="--", linewidth=0.3, which="minor")
+                ax.minorticks_on()
+            else:
+                ax.grid(False)
 
             # Apply axis ranges if specified
             if (
@@ -936,11 +1056,13 @@ class SimplePlotManager:
             ):
                 ax.set_ylim(y_range[0], y_range[1])
 
-            # Smart legend positioning
-            ax.legend(loc="best", framealpha=0.9, edgecolor="gray")
+            # Legend positioning based on control panel
+            if show_legend and legend_elements:
+                ax.legend(loc="best", framealpha=0.9, edgecolor="gray")
 
-            # Add model diagnostics
-            self._add_model_diagnostics_text(ax, model, len(means))
+            # Add model diagnostics based on control panel
+            if show_diagnostics:
+                self._add_model_diagnostics_text(ax, model, len(means))
 
             fig.tight_layout()
 
@@ -1049,6 +1171,7 @@ class SimplePlotManager:
         response_name: str,
         fixed_value: float,
         tolerance: float = 0.1,
+        marker_size: int = 50,
     ):
         """Add experimental data points that are close to the fixed parameter value"""
         exp_data = self.optimizer.experimental_data
@@ -1095,7 +1218,7 @@ class SimplePlotManager:
                 param1_values[valid_mask],
                 response_values[valid_mask],
                 color="red",
-                s=60,
+                s=marker_size,
                 alpha=0.8,
                 edgecolors="darkred",
                 linewidth=1,
@@ -1141,6 +1264,7 @@ class SimplePlotManager:
         plot_style="surface",
         show_uncertainty=False,
         show_contours=True,
+        show_data_points=True,
     ):
         """Create enhanced 3D response surface plot with comprehensive improvements"""
         fig.clear()
@@ -1233,10 +1357,11 @@ class SimplePlotManager:
                 z_range,
             )
 
-            # Add experimental data points with enhanced styling
-            self._add_enhanced_3d_experimental_data(
-                ax, param1_name, param2_name, response_name
-            )
+            # Add experimental data points with enhanced styling (if enabled)
+            if show_data_points:
+                self._add_enhanced_3d_experimental_data(
+                    ax, param1_name, param2_name, response_name
+                )
 
             # Add model diagnostics
             self._add_enhanced_3d_model_diagnostics(ax, model, resolution)
@@ -3612,17 +3737,20 @@ class SimplePlotManager:
         param1_name,
         param2_name,
         plot_style="heatmap",
-        uncertainty_metric="std",
+        uncertainty_metric="gp_uncertainty",
         colormap="Reds",
         resolution=70,
         show_experimental_data=True,
+        show_gp_uncertainty=True,
+        show_data_density=False,
+        show_statistical_deviation=False,
     ):
         """
-        Create GP uncertainty map with both GP prediction uncertainty and statistical deviations
+        Create single GP uncertainty map with user-selectable visualization types
 
-        This creates a comprehensive view showing:
+        This creates a unified view showing user-selected uncertainty visualization:
         1. GP Prediction Uncertainty - Model's predictive uncertainty from GP posterior
-        2. Statistical Deviations - Data variability heatmaps (std, variance, etc.)
+        2. Data Density - Spatial density of experimental data points
 
         Args:
             fig: Matplotlib figure
@@ -3631,50 +3759,67 @@ class SimplePlotManager:
             param1_name: Name of first parameter (x-axis)
             param2_name: Name of second parameter (y-axis)
             plot_style: 'heatmap', 'contour', 'filled_contour', or 'combined'
-            uncertainty_metric: 'std', 'variance', or 'coefficient_of_variation'
+            uncertainty_metric: 'gp_uncertainty', 'data_density'
             colormap: Matplotlib colormap name
             resolution: Grid resolution for heatmap
             show_experimental_data: Whether to overlay experimental data points
+            show_gp_uncertainty: Show GP prediction uncertainty
+            show_data_density: Show data density
+            show_statistical_deviation: (Deprecated - no longer used)
         """
         fig.clear()
 
         try:
-            # Create subplot layout: 2x1 for both types
-            gs = fig.add_gridspec(2, 1, height_ratios=[1, 1], hspace=0.4)
+            # Create single subplot for unified view
+            ax = fig.add_subplot(111)
+            
+            # Determine which visualization to show based on user selection
+            if show_gp_uncertainty and uncertainty_metric == "gp_uncertainty":
+                self._create_gp_prediction_uncertainty_plot(
+                    ax,
+                    response_name,
+                    param1_name,
+                    param2_name,
+                    plot_style,
+                    colormap,
+                    resolution,
+                    show_experimental_data,
+                )
+                plot_title = f"GP Prediction Uncertainty: {response_name}"
+                
+            elif show_data_density and uncertainty_metric == "data_density":
+                self._create_data_density_plot(
+                    ax,
+                    response_name,
+                    param1_name,
+                    param2_name,
+                    plot_style,
+                    colormap,
+                    resolution,
+                    show_experimental_data,
+                )
+                plot_title = f"Data Density: {response_name}"
+                
+            else:
+                # Default to GP uncertainty if no specific selection
+                self._create_gp_prediction_uncertainty_plot(
+                    ax,
+                    response_name,
+                    param1_name,
+                    param2_name,
+                    plot_style,
+                    colormap,
+                    resolution,
+                    show_experimental_data,
+                )
+                plot_title = f"GP Prediction Uncertainty: {response_name}"
 
-            # 1. GP Prediction Uncertainty (Top subplot)
-            ax1 = fig.add_subplot(gs[0])
-            self._create_gp_prediction_uncertainty_plot(
-                ax1,
-                response_name,
-                param1_name,
-                param2_name,
-                plot_style,
-                colormap,
-                resolution,
-                show_experimental_data,
-            )
-
-            # 2. Statistical Deviations (Bottom subplot)
-            ax2 = fig.add_subplot(gs[1])
-            self._create_statistical_deviation_plot(
-                ax2,
-                response_name,
-                param1_name,
-                param2_name,
-                uncertainty_metric,
-                plot_style,
-                colormap,
-                resolution,
-                show_experimental_data,
-            )
-
-            # Set main title
-            fig.suptitle(
-                f"GP Uncertainty Analysis: {response_name}\\nvs {param1_name} & {param2_name}",
-                fontsize=14,
+            # Set title for single plot
+            ax.set_title(
+                f"{plot_title}\nvs {param1_name} & {param2_name}",
+                fontsize=12,
                 fontweight="bold",
-                y=0.95,
+                pad=20,
             )
 
             if canvas:
@@ -3751,6 +3896,90 @@ class SimplePlotManager:
             logger.error(f"Error creating GP prediction uncertainty plot: {e}")
             self._plot_message_on_axis(ax, f"GP uncertainty error: {str(e)}")
 
+    def _create_data_density_plot(
+        self,
+        ax,
+        response_name,
+        param1_name,
+        param2_name,
+        plot_style,
+        colormap,
+        resolution,
+        show_experimental_data,
+    ):
+        """Create data density heatmap showing spatial distribution of experimental data"""
+        try:
+            # Get experimental data
+            if not hasattr(self.optimizer, 'experimental_data') or self.optimizer.experimental_data.empty:
+                self._plot_message_on_axis(ax, "No experimental data available")
+                return
+            
+            data = self.optimizer.experimental_data
+
+            # Get parameter bounds for grid
+            param1_config = self.optimizer.params_config.get(param1_name)
+            param2_config = self.optimizer.params_config.get(param2_name)
+
+            if not param1_config or not param2_config:
+                self._plot_message_on_axis(ax, f"Cannot find parameters {param1_name}, {param2_name}")
+                return
+
+            # Get experimental data for these parameters
+            if param1_name not in data.columns or param2_name not in data.columns:
+                self._plot_message_on_axis(ax, f"No data for parameters {param1_name}, {param2_name}")
+                return
+
+            x1_data = data[param1_name].values
+            x2_data = data[param2_name].values
+
+            # Check if we have enough data points for KDE
+            if len(x1_data) < 2:
+                self._plot_message_on_axis(ax, "Need at least 2 data points for density estimation")
+                return
+
+            # Create grid for density calculation
+            x1_bounds = param1_config["bounds"]
+            x2_bounds = param2_config["bounds"]
+            x1_vals = np.linspace(x1_bounds[0], x1_bounds[1], resolution)
+            x2_vals = np.linspace(x2_bounds[0], x2_bounds[1], resolution)
+            X1, X2 = np.meshgrid(x1_vals, x2_vals)
+
+            # Calculate data density using kernel density estimation
+            from scipy.stats import gaussian_kde
+            
+            # Create KDE from experimental data points
+            points = np.vstack([x1_data, x2_data])
+            
+            # Handle edge case where all points are identical
+            if np.all(points[0] == points[0][0]) and np.all(points[1] == points[1][0]):
+                # All points are at the same location, create a simple peak
+                center_x, center_y = points[0][0], points[1][0]
+                density_grid = np.exp(-((X1 - center_x)**2 + (X2 - center_y)**2) / (0.1 * (x1_bounds[1] - x1_bounds[0])**2))
+            else:
+                kde = gaussian_kde(points)
+                # Evaluate KDE on grid
+                grid_points = np.vstack([X1.ravel(), X2.ravel()])
+                density_grid = kde(grid_points).reshape(X1.shape)
+
+            # Create the data density visualization
+            self._create_uncertainty_visualization(
+                ax,
+                X1,
+                X2,
+                density_grid,
+                f"Data Density: {response_name}\\nvs {param1_name} & {param2_name}",
+                param1_name,
+                param2_name,
+                plot_style,
+                colormap,
+                "Data Density",
+                show_experimental_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Error creating data density plot: {e}")
+            self._plot_message_on_axis(ax, f"Data density error: {str(e)}")
+
     def _create_statistical_deviation_plot(
         self,
         ax,
@@ -3786,7 +4015,7 @@ class SimplePlotManager:
 
             # Get statistical uncertainty predictions
             uncertainty_grid = self._get_statistical_uncertainty_with_params(
-                param1_name, param2_name, resolution, uncertainty_metric
+                param1_name, param2_name, resolution, uncertainty_metric, response_name
             )
 
             if uncertainty_grid is None:
@@ -3975,7 +4204,7 @@ class SimplePlotManager:
             return np.zeros((resolution, resolution))
 
     def _get_statistical_uncertainty_with_params(
-        self, param1_name, param2_name, resolution, uncertainty_metric
+        self, param1_name, param2_name, resolution, uncertainty_metric, response_name=None
     ):
         """Get data-based statistical uncertainty using specific parameter names"""
         try:
@@ -4049,6 +4278,81 @@ class SimplePlotManager:
                         # Distance to nearest experimental point
                         min_distance = np.min(distances)
                         uncertainty_map[j, i] = min_distance
+
+                    elif uncertainty_metric == "std":
+                        # Standard deviation of nearby response values
+                        nearby_threshold = (
+                            min(
+                                x1_bounds[1] - x1_bounds[0], x2_bounds[1] - x2_bounds[0]
+                            )
+                            / 5
+                        )
+                        nearby_mask = distances < nearby_threshold
+
+                        if np.sum(nearby_mask) > 1 and response_name and response_name in exp_data.columns:
+                            # Get response values for nearby points for specific response
+                            nearby_responses = exp_data[response_name].values[nearby_mask]
+                            
+                            if len(nearby_responses) > 1:
+                                local_std = np.std(nearby_responses)
+                                uncertainty_map[j, i] = local_std
+                            else:
+                                uncertainty_map[j, i] = np.min(distances)
+                        else:
+                            uncertainty_map[j, i] = np.min(distances)
+
+                    elif uncertainty_metric == "variance":
+                        # Variance of nearby response values
+                        nearby_threshold = (
+                            min(
+                                x1_bounds[1] - x1_bounds[0], x2_bounds[1] - x2_bounds[0]
+                            )
+                            / 5
+                        )
+                        nearby_mask = distances < nearby_threshold
+
+                        if np.sum(nearby_mask) > 1 and response_name and response_name in exp_data.columns:
+                            # Get response values for nearby points for specific response
+                            nearby_responses = exp_data[response_name].values[nearby_mask]
+                            
+                            if len(nearby_responses) > 1:
+                                local_var = np.var(nearby_responses)
+                                uncertainty_map[j, i] = local_var
+                            else:
+                                uncertainty_map[j, i] = np.min(distances) ** 2
+                        else:
+                            uncertainty_map[j, i] = np.min(distances) ** 2
+
+                    elif uncertainty_metric == "coefficient_of_variation":
+                        # Coefficient of variation of nearby response values
+                        nearby_threshold = (
+                            min(
+                                x1_bounds[1] - x1_bounds[0], x2_bounds[1] - x2_bounds[0]
+                            )
+                            / 5
+                        )
+                        nearby_mask = distances < nearby_threshold
+
+                        if np.sum(nearby_mask) > 1 and response_name and response_name in exp_data.columns:
+                            # Get response values for nearby points for specific response
+                            nearby_responses = exp_data[response_name].values[nearby_mask]
+                            
+                            if len(nearby_responses) > 1:
+                                mean_response = np.mean(nearby_responses)
+                                std_response = np.std(nearby_responses)
+                                if abs(mean_response) > 1e-10:  # Avoid division by zero
+                                    cv = std_response / abs(mean_response)
+                                    uncertainty_map[j, i] = cv
+                                else:
+                                    uncertainty_map[j, i] = 0.0
+                            else:
+                                uncertainty_map[j, i] = np.min(distances) / max(
+                                    x1_bounds[1] - x1_bounds[0], x2_bounds[1] - x2_bounds[0]
+                                )
+                        else:
+                            uncertainty_map[j, i] = np.min(distances) / max(
+                                x1_bounds[1] - x1_bounds[0], x2_bounds[1] - x2_bounds[0]
+                            )
 
                     else:  # Default: data_density
                         kernel_width = (x1_bounds[1] - x1_bounds[0]) / 10

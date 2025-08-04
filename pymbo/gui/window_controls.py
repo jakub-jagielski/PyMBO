@@ -621,6 +621,30 @@ def create_window_plot_control_panel(parent, plot_type: str, params_config: Dict
             except ImportError:
                 logger.warning("Sensitivity Analysis controls not available, using standard window controls")
         
+        elif plot_type == 'pareto':
+            try:
+                from .pareto_controls import create_pareto_control_panel
+                logger.info(f"Using specialized Pareto controls for {plot_type}")
+                return create_pareto_control_panel(parent, plot_type, params_config, responses_config, update_callback)
+            except ImportError:
+                logger.warning("Pareto controls not available, using standard window controls")
+        
+        elif plot_type == 'progress':
+            try:
+                from .progress_controls import create_progress_control_panel
+                logger.info(f"Using specialized Progress controls for {plot_type}")
+                return create_progress_control_panel(parent, plot_type, params_config, responses_config, update_callback)
+            except ImportError:
+                logger.warning("Progress controls not available, using standard window controls")
+        
+        elif plot_type == 'gp_slice':
+            try:
+                from .gp_slice_controls import create_gp_slice_control_panel
+                logger.info(f"Using specialized GP slice controls for {plot_type}")
+                return create_gp_slice_control_panel(parent, plot_type, params_config, responses_config, update_callback)
+            except ImportError:
+                logger.warning("GP slice controls not available, using standard window controls")
+        
         # Default to standard window controls
         control_panel = WindowPlotControlPanel(parent, plot_type, params_config, responses_config, update_callback)
         logger.info(f"Created window plot control panel for {plot_type}")

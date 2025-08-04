@@ -60,16 +60,28 @@ try:
         create_window_plot_control_panel,
         WindowPlotControlPanel,
     )
+    from .uncertainty_analysis_controls import (
+        create_uncertainty_analysis_control_panel,
+        UncertaintyAnalysisControlPanel,
+    )
+    from .model_diagnostics_controls import (
+        create_model_diagnostics_control_panel,
+        ModelDiagnosticsControlPanel,
+    )
 
     ENHANCED_CONTROLS_AVAILABLE = True
     COMPACT_CONTROLS_AVAILABLE = True
     MOVABLE_CONTROLS_AVAILABLE = True
     WINDOW_CONTROLS_AVAILABLE = True
+    UNCERTAINTY_ANALYSIS_CONTROLS_AVAILABLE = True
+    MODEL_DIAGNOSTICS_CONTROLS_AVAILABLE = True
 except ImportError:
     ENHANCED_CONTROLS_AVAILABLE = False
     COMPACT_CONTROLS_AVAILABLE = False
     MOVABLE_CONTROLS_AVAILABLE = False
     WINDOW_CONTROLS_AVAILABLE = False
+    UNCERTAINTY_ANALYSIS_CONTROLS_AVAILABLE = False
+    MODEL_DIAGNOSTICS_CONTROLS_AVAILABLE = False
     print("Enhanced plot controls not available - using basic controls")
 
 # Configuration constants
@@ -189,6 +201,8 @@ class SimpleOptimizerApp(tk.Tk):
         self.enhanced_controls = {}
         # Initialize window configurations for lazy creation
         self.window_configs = {}
+        # Initialize uncertainty analysis control panel reference
+        self.uncertainty_analysis_control = None
 
         # Set window icon if available
         try:
@@ -598,13 +612,64 @@ class SimpleOptimizerApp(tk.Tk):
         # Clear the content frame and create the welcome frame.
         self._clear_content_frame()
 
-        # Main welcome container with card styling
-        welcome_container = self.create_modern_card(self.content_frame, padx=0, pady=0)
-        welcome_container.pack(fill=tk.BOTH, expand=True)
+        # Create scrollable container for welcome content
+        canvas = tk.Canvas(self.content_frame, bg=ModernTheme.BACKGROUND, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.content_frame, orient="vertical", command=canvas.yview)
+        
+        # Create scrollable frame
+        scrollable_frame = tk.Frame(canvas, bg=ModernTheme.BACKGROUND)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        
+        # Bind canvas resize to update frame width
+        def _configure_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Update the scrollable frame width to match canvas width
+            canvas.itemconfig(canvas_window, width=event.width)
+        
+        canvas.bind("<Configure>", _configure_scroll_region)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        def _bind_mousewheel_to_widget(widget):
+            """Recursively bind mouse wheel events to widget and all its children"""
+            # Bind mouse wheel events for Windows and Linux
+            widget.bind("<MouseWheel>", _on_mousewheel)  # Windows
+            widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # Linux
+            widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))   # Linux
+            
+            # Recursively bind to all children
+            for child in widget.winfo_children():
+                _bind_mousewheel_to_widget(child)
+        
+        # Bind mouse wheel events to canvas and content frame
+        canvas.bind("<MouseWheel>", _on_mousewheel)  # Windows
+        canvas.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # Linux
+        canvas.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))   # Linux
+        
+        # Also bind to the main content frame so scrolling works anywhere
+        self.content_frame.bind("<MouseWheel>", _on_mousewheel)
+        self.content_frame.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+        self.content_frame.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        # Welcome content with proper spacing
+        # Main welcome container with card styling
+        welcome_container = self.create_modern_card(scrollable_frame, padx=0, pady=0)
+        welcome_container.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        # Welcome content with responsive spacing
         welcome_content = tk.Frame(welcome_container, bg=ModernTheme.SURFACE)
-        welcome_content.pack(fill=tk.BOTH, expand=True, padx=48, pady=48)
+        welcome_content.pack(fill=tk.BOTH, expand=True, padx=32, pady=32)
 
         # Hero section with icon and title
         hero_frame = tk.Frame(welcome_content, bg=ModernTheme.SURFACE)
@@ -772,6 +837,9 @@ class SimpleOptimizerApp(tk.Tk):
             style="secondary",
         )
         import_btn.pack(side=tk.LEFT)
+        
+        # Bind mouse wheel scrolling to all widgets in the welcome screen
+        _bind_mousewheel_to_widget(scrollable_frame)
 
     def _start_setup_wizard(self) -> None:
         """
@@ -874,6 +942,76 @@ class SimpleOptimizerApp(tk.Tk):
             command=self._show_welcome_screen,
         )
         back_btn.pack(side=tk.LEFT, padx=10)
+        
+        # Check if we have pending import data to populate the interface
+        if hasattr(self, '_pending_import_data'):
+            self._populate_interface_with_import_data()
+
+    def _populate_interface_with_import_data(self):
+        """Populate the setup interface with imported data."""
+        try:
+            import_data = self._pending_import_data
+            
+            # Clear existing parameter rows (there's usually one default)
+            for row_data in self.param_rows[:]:
+                # Get the frame from the first widget's parent
+                if row_data and 'name' in row_data:
+                    row_frame = row_data['name'].master
+                    self._remove_row(row_frame, row_data, self.param_rows)
+            
+            # Add parameter rows from imported data
+            for param_name, param_config in import_data['parameters'].items():
+                self._add_parameter_row()
+                # Get the most recently added row
+                if self.param_rows:
+                    row_data = self.param_rows[-1]
+                    
+                    # Fill in the parameter data
+                    row_data['name'].delete(0, tk.END)
+                    row_data['name'].insert(0, param_name)
+                    row_data['type'].set(param_config['type'])
+                    
+                    if param_config['type'] in ['continuous', 'discrete']:
+                        bounds = param_config['bounds']
+                        bounds_text = f"[{bounds[0]}, {bounds[1]}]"
+                        row_data['bounds'].delete(0, tk.END)
+                        row_data['bounds'].insert(0, bounds_text)
+                    elif param_config['type'] == 'categorical':
+                        # For categorical, show categories
+                        categories = param_config.get('categories', [])
+                        if categories:
+                            cats_text = str(categories) if len(categories) <= 5 else f"{categories[:5]}... ({len(categories)} total)"
+                            row_data['bounds'].delete(0, tk.END)
+                            row_data['bounds'].insert(0, cats_text)
+            
+            # Clear existing response rows
+            for row_data in self.response_rows[:]:
+                # Get the frame from the first widget's parent
+                if row_data and 'name' in row_data:
+                    row_frame = row_data['name'].master
+                    self._remove_row(row_frame, row_data, self.response_rows)
+            
+            # Add response rows from imported data
+            for response_name, response_config in import_data['responses'].items():
+                self._add_response_row()
+                # Get the most recently added row
+                if self.response_rows:
+                    row_data = self.response_rows[-1] 
+                    
+                    # Fill in the response data
+                    row_data['name'].delete(0, tk.END)
+                    row_data['name'].insert(0, response_name)
+                    row_data['goal'].set(response_config['goal'])
+            
+            # Update status
+            self.set_status(f"Setup interface populated with {len(import_data['parameters'])} parameters and {len(import_data['responses'])} responses")
+            
+            # Clean up
+            delattr(self, '_pending_import_data')
+            
+        except Exception as e:
+            logging.error(f"Failed to populate interface with import data: {e}")
+            messagebox.showwarning("Warning", "Could not populate interface with imported data. You may need to configure parameters manually.")
 
     def _build_parameters_tab(self, parent: tk.Frame) -> None:
         """
@@ -1393,9 +1531,35 @@ class SimpleOptimizerApp(tk.Tk):
             # If all validations pass, start the optimization via the controller.
             if self.controller:
                 initial_sampling_method = self.initial_sampling_method_var.get()
-                self.controller.start_new_optimization(
-                    params_config, responses_config, [], initial_sampling_method
-                )
+                
+                # Check if we already have an optimizer with imported data
+                if (self.controller.optimizer and 
+                    hasattr(self.controller, 'imported_data') and 
+                    self.controller.imported_data is not None):
+                    
+                    # We have imported data - just proceed to the main interface
+                    # The optimizer already has the data loaded
+                    logger.info("Using existing optimizer with imported data")
+                    
+                    # Use the stored imported configuration
+                    imported_params = self.controller.imported_params_config
+                    imported_responses = self.controller.imported_responses_config
+                    
+                    # Create the main optimization interface with imported data
+                    self.create_main_interface(imported_params, imported_responses)
+                    
+                    # Update displays with existing data
+                    if hasattr(self.controller, 'update_view'):
+                        self.controller.update_view()
+                    
+                    # Set status to show that imported data is loaded
+                    data_count = len(self.controller.imported_data) if self.controller.imported_data is not None else 0
+                    self.set_status(f"Optimization interface ready with {data_count} imported data points")
+                else:
+                    # Normal path - create new optimization
+                    self.controller.start_new_optimization(
+                        params_config, responses_config, [], initial_sampling_method
+                    )
             else:
                 messagebox.showerror(
                     "Initialization Error",
@@ -1617,13 +1781,24 @@ class SimpleOptimizerApp(tk.Tk):
         # Button to manually refresh the single experiment suggestion.
         refresh_btn = tk.Button(
             parent,
-            text="Get New Suggestion",
+            text="Refresh Suggestion",
             font=("Arial", 10),
             bg="#3498db",
             fg="white",
             command=self._refresh_suggestion,
         )
         refresh_btn.pack(pady=10)
+        
+        # Add explanation about suggestion behavior
+        explanation_label = tk.Label(
+            parent,
+            text="Note: The algorithm suggests the most informative experiment.\nThe same suggestion will appear until new data is added.",
+            font=("Arial", 8),
+            fg="#7f8c8d",
+            bg="white",
+            justify=tk.CENTER
+        )
+        explanation_label.pack(pady=(0, 10))
 
         # Section for generating and managing batch suggestions.
         batch_frame = tk.LabelFrame(
@@ -1672,18 +1847,21 @@ class SimpleOptimizerApp(tk.Tk):
         )
         upload_batch_btn.pack(side=tk.LEFT, padx=5, pady=5)
 
-        # ScrolledText widget to display the generated batch suggestions.
+        # ScrolledText widget to display all experimental data points.
         self.batch_suggestions_text = scrolledtext.ScrolledText(
-            parent, height=10, wrap=tk.WORD
+            parent, height=10, wrap=tk.NONE, font=("Consolas", 9)
         )
         self.batch_suggestions_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
         self.batch_suggestions_text.insert(
-            tk.END, "Batch suggestions will appear here."
+            tk.END, "All experimental data points will appear here."
         )
         self.batch_suggestions_text.config(state=tk.DISABLED)  # Make it read-only.
 
         # List to store generated batch suggestions internally.
         self.generated_batch_suggestions = []
+        
+        # Display experimental data if available
+        self._update_experimental_data_display()
 
     def _build_results_tab(
         self, parent: tk.Frame, responses_config: Dict[str, Any]
@@ -1964,7 +2142,7 @@ class SimpleOptimizerApp(tk.Tk):
 
         model_diagnostics_tab = tk.Frame(self.plot_notebook, bg="white")
         self.plot_notebook.add(model_diagnostics_tab, text="Model Diagnostics")
-        self.tab_to_plot_type[6] = "parity"  # Model diagnostics contains parity tab
+        self.tab_to_plot_type[6] = "model_diagnostics"  # Model diagnostics unified tab
 
         sensitivity_analysis_tab = tk.Frame(self.plot_notebook, bg="white")
         self.plot_notebook.add(sensitivity_analysis_tab, text="Sensitivity Analysis")
@@ -2016,6 +2194,12 @@ class SimpleOptimizerApp(tk.Tk):
         self.pareto_y_var = tk.StringVar(
             value=objectives[1] if len(objectives) > 1 else ""
         )
+        
+        # Pareto plot visibility controls
+        self.pareto_show_all_solutions_var = tk.BooleanVar(value=True)
+        self.pareto_show_pareto_points_var = tk.BooleanVar(value=True)
+        self.pareto_show_pareto_front_var = tk.BooleanVar(value=True)
+        self.pareto_show_legend_var = tk.BooleanVar(value=True)
 
         # Create plot with compact controls using helper method
         self._create_plot_with_compact_controls(
@@ -2036,6 +2220,12 @@ class SimpleOptimizerApp(tk.Tk):
         Args:
             parent (tk.Frame): The parent Tkinter frame for this tab.
         """
+        # Initialize progress plot visibility controls
+        self.progress_show_raw_hv_var = tk.BooleanVar(value=True)
+        self.progress_show_normalized_hv_var = tk.BooleanVar(value=True)
+        self.progress_show_trend_var = tk.BooleanVar(value=True)
+        self.progress_show_legend_var = tk.BooleanVar(value=True)
+        
         # Create plot with compact controls using helper method
         self._create_plot_with_compact_controls(
             parent=parent,
@@ -2209,85 +2399,58 @@ class SimpleOptimizerApp(tk.Tk):
         logger.debug("Enhanced GP Uncertainty Map tab built with advanced controls.")
 
     def _build_model_diagnostics_tab(self, parent, params_config, responses_config):
-        """Build Model Diagnostics plot tab with sub-tabs for Parity and Residuals plots."""
-        # Notebook for sub-tabs
-        self.diagnostics_notebook = ttk.Notebook(parent, style="Modern.TNotebook")
-        self.diagnostics_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Parity Plot tab
-        parity_tab = tk.Frame(self.diagnostics_notebook, bg="white")
-        self.diagnostics_notebook.add(parity_tab, text="Parity Plot")
-
-        # Residuals Plot tab
-        residuals_tab = tk.Frame(self.diagnostics_notebook, bg="white")
-        self.diagnostics_notebook.add(residuals_tab, text="Residuals Plot")
-
-        # Initialize variables for Parity plot (controls now handled by separate panels)
-        self.parity_response_var = tk.StringVar(
+        """Build Model Diagnostics plot tab with unified control panel."""
+        # Initialize model diagnostics response variable
+        self.model_diagnostics_response_var = tk.StringVar(
             value=list(responses_config.keys())[0] if responses_config else ""
         )
 
-        # Create plot with compact controls using helper method (in parity_tab)
+        # Create single plot with compact controls using helper method
         self._create_plot_with_compact_controls(
-            parent=parity_tab,
-            plot_type="parity",
-            fig_attr="parity_fig",
-            canvas_attr="parity_canvas",
-            params_config=params_config,
-            responses_config=responses_config,
-            figsize=(8, 8),  # Square aspect ratio
-        )
-
-        # Initialize residuals response variable for automatic updates
-        self.residuals_response_var = tk.StringVar(
-            value=list(responses_config.keys())[0] if responses_config else ""
-        )
-
-        # Create plot with compact controls using helper method (in residuals_tab)
-        self._create_plot_with_compact_controls(
-            parent=residuals_tab,
-            plot_type="residuals",
-            fig_attr="residuals_fig",
-            canvas_attr="residuals_canvas",
+            parent=parent,
+            plot_type="model_diagnostics",
+            fig_attr="model_diagnostics_fig",
+            canvas_attr="model_diagnostics_canvas",
             params_config=params_config,
             responses_config=responses_config,
             figsize=(8, 8),  # Square aspect ratio
         )
         
         # Draw initial plot - either with existing data or placeholder
-        if hasattr(self, "residuals_fig"):
+        if hasattr(self, "model_diagnostics_fig"):
             # Check if we have data and can create the actual plot
             if (hasattr(self, 'controller') and self.controller and 
                 hasattr(self.controller, 'plot_manager') and self.controller.plot_manager):
                 try:
-                    # Try to create the actual residuals plot with existing data
-                    response_name = self.residuals_response_var.get()
+                    # Try to create the actual model diagnostics plot with existing data
+                    response_name = self.model_diagnostics_response_var.get()
                     if response_name:
-                        self.controller.plot_manager.create_residuals_plot(
-                            self.residuals_fig, self.residuals_canvas, response_name
+                        # Default to residuals plot on initialization
+                        self.controller.plot_manager.create_model_analysis_plot(
+                            self.model_diagnostics_fig, self.model_diagnostics_canvas, response_name, "residuals"
                         )
-                        self.residuals_canvas.draw()
+                        self.model_diagnostics_canvas.draw()
                     else:
                         # No response selected, show placeholder
-                        self._draw_residuals_placeholder()
+                        self._draw_model_diagnostics_placeholder()
                 except Exception as e:
                     # If plot creation fails (no data), show placeholder
-                    logger.debug(f"Could not create initial residuals plot: {e}")
-                    self._draw_residuals_placeholder()
+                    logger.debug(f"Could not create initial model diagnostics plot: {e}")
+                    self._draw_model_diagnostics_placeholder()
             else:
                 # No controller/plot_manager available, show placeholder
-                self._draw_residuals_placeholder()
+                self._draw_model_diagnostics_placeholder()
     
-    def _draw_residuals_placeholder(self):
-        """Draw placeholder for residuals plot when no data is available"""
-        if hasattr(self, "residuals_fig"):
-            self.residuals_fig.clear()  # Clear any existing content
-            ax = self.residuals_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "Residuals Plot\n(Data will appear when optimization data is available)", 
+    def _draw_model_diagnostics_placeholder(self):
+        """Draw placeholder for model diagnostics plot when no data is available"""
+        if hasattr(self, "model_diagnostics_fig"):
+            self.model_diagnostics_fig.clear()  # Clear any existing content
+            ax = self.model_diagnostics_fig.add_subplot(111)
+            ax.text(0.5, 0.5, "Model Diagnostics\n(Data will appear when optimization data is available)", 
                    ha='center', va='center', transform=ax.transAxes, 
                    fontsize=12, color='gray')
-            ax.set_title("Model Residuals Analysis")
-            self.residuals_canvas.draw()
+            ax.set_title("Model Diagnostics Analysis")
+            self.model_diagnostics_canvas.draw()
 
     def _build_sensitivity_analysis_tab(self, parent, params_config, responses_config):
         """Build Enhanced Sensitivity Analysis plot tab with method selection."""
@@ -2351,12 +2514,16 @@ class SimpleOptimizerApp(tk.Tk):
         """CORRECTED - Refresh suggestion manually"""
         if self.controller:
             try:
-                # Generate new suggestion
+                logger.info("Refreshing suggestion manually...")
+                
+                # Generate new suggestion (will be the same until new data is added - this is correct behavior)
                 suggestions = self.controller.optimizer.suggest_next_experiment(
                     n_suggestions=1
                 )
+                
                 if suggestions:
                     self.current_suggestion = suggestions[0]
+                    logger.info(f"Refreshed suggestion: {self.current_suggestion}")
 
                     # Update display
                     for name, label in self.suggestion_labels.items():
@@ -2374,12 +2541,13 @@ class SimpleOptimizerApp(tk.Tk):
                                 text="Not available", bg="#ffeaa7", fg="#636e72"
                             )
 
-                    self.set_status("New suggestion generated")
+                    self.set_status("Suggestion refreshed")
                 else:
+                    logger.warning("No suggestions returned from optimizer")
                     self.set_status("Could not generate suggestion")
 
             except Exception as e:
-                logger.error(f"Error refreshing suggestion: {e}")
+                logger.error(f"Error refreshing suggestion: {e}", exc_info=True)
                 self.set_status(f"Error: {e}")
 
     def _submit_results(self):
@@ -2411,6 +2579,7 @@ class SimpleOptimizerApp(tk.Tk):
                 # Update plots and suggestions after submission
                 self.update_all_plots()
                 self._refresh_suggestion()
+                self._update_experimental_data_display()
 
             except ValueError as e:
                 messagebox.showerror("Input Error", str(e))
@@ -2542,6 +2711,65 @@ class SimpleOptimizerApp(tk.Tk):
         finally:
             self.set_busy_state(False)
 
+    def _update_experimental_data_display(self):
+        """Update the data display widget to show all experimental data points."""
+        try:
+            if not self.controller or not self.controller.optimizer:
+                return
+                
+            experimental_data = self.controller.optimizer.experimental_data
+            if experimental_data is None or experimental_data.empty:
+                return
+            
+            # Clear the text widget
+            self.batch_suggestions_text.config(state=tk.NORMAL)
+            self.batch_suggestions_text.delete(1.0, tk.END)
+            
+            # Create header
+            self.batch_suggestions_text.insert(tk.END, f"Experimental Data ({len(experimental_data)} points)\n")
+            self.batch_suggestions_text.insert(tk.END, "=" * 80 + "\n\n")
+            
+            # Get column names and create formatted table
+            columns = experimental_data.columns.tolist()
+            
+            # Create header row
+            header_line = ""
+            for col in columns:
+                if len(col) > 12:
+                    col_display = col[:9] + "..."
+                else:
+                    col_display = col
+                header_line += f"{col_display:>12} "
+            
+            self.batch_suggestions_text.insert(tk.END, header_line + "\n")
+            self.batch_suggestions_text.insert(tk.END, "-" * len(header_line) + "\n")
+            
+            # Add data rows
+            for idx, row in experimental_data.iterrows():
+                data_line = ""
+                for col in columns:
+                    value = row[col]
+                    if isinstance(value, float):
+                        if abs(value) < 0.001 or abs(value) > 9999:
+                            formatted_value = f"{value:.2e}"
+                        else:
+                            formatted_value = f"{value:.3f}"
+                    else:
+                        formatted_value = str(value)
+                    
+                    # Truncate if too long
+                    if len(formatted_value) > 12:
+                        formatted_value = formatted_value[:9] + "..."
+                    
+                    data_line += f"{formatted_value:>12} "
+                
+                self.batch_suggestions_text.insert(tk.END, data_line + "\n")
+            
+            self.batch_suggestions_text.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            logger.error(f"Error updating experimental data display: {e}", exc_info=True)
+
     def _load_existing_study(self):
         """Load existing optimization study"""
         filepath = filedialog.askopenfilename(
@@ -2557,8 +2785,98 @@ class SimpleOptimizerApp(tk.Tk):
                 messagebox.showerror("Load Error", "Failed to load study")
 
     def _import_experimental_data(self):
-        """Import experimental data"""
-        self._upload_batch_suggestions_csv()
+        """Import experimental data using wizard"""
+        try:
+            from .import_wizard import ImportWizard
+            
+            wizard = ImportWizard(self, self.controller)
+            self.wait_window(wizard)
+            
+            if hasattr(wizard, 'result') and wizard.result:
+                # Process wizard result
+                result = wizard.result
+                self._process_import_wizard_result(result)
+            
+        except ImportError:
+            messagebox.showerror("Error", "Import wizard not available. Using fallback method.")
+            self._upload_batch_suggestions_csv()
+        except Exception as e:
+            messagebox.showerror("Error", f"Import wizard failed: {str(e)}")
+            logging.error(f"Import wizard error: {e}")
+
+    def _process_import_wizard_result(self, result):
+        """Process the result from the import wizard."""
+        try:
+            # Store the import data for later use
+            self.import_data = {
+                'parameters': result['parameters'],
+                'responses': result['responses'], 
+                'data': result['data'],
+                'filepath': result['filepath']
+            }
+            
+            # Show success message
+            data_count = len(result['data'])
+            param_count = len(result['parameters'])
+            response_count = len(result['responses'])
+            
+            messagebox.showinfo(
+                "Import Successful",
+                f"Successfully imported:\n"
+                f"• {data_count} data points\n"
+                f"• {param_count} parameters\n" 
+                f"• {response_count} responses\n\n"
+                f"Proceeding to optimization setup..."
+            )
+            
+            # Start setup wizard with pre-configured data
+            self._start_setup_wizard_with_import()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to process import data: {str(e)}")
+            logging.error(f"Import processing error: {e}")
+
+    def _start_setup_wizard_with_import(self):
+        """Start setup wizard with imported data pre-configuration."""
+        try:
+            # Clear main frame and start setup (same as _start_setup_wizard)
+            for widget in self.main_frame.winfo_children():
+                widget.destroy()
+
+            # Reset lists that hold references to parameter and response input rows
+            self.param_rows = []
+            self.response_rows = []
+            
+            # Initialize controller if needed
+            if not self.controller:
+                from pymbo.core.controller import SimpleController
+                self.controller = SimpleController(view=self)
+            
+            # Pre-configure with imported data
+            if hasattr(self, 'import_data'):
+                import_data = self.import_data
+                
+                # Create optimizer with imported configuration first
+                self.controller.setup_optimization_with_import(
+                    import_data['parameters'],
+                    import_data['responses'],
+                    import_data['data']
+                )
+                
+                # Store import data to be used when creating the interface
+                self._pending_import_data = import_data
+                
+                # Show setup interface - it will check for _pending_import_data
+                self._create_setup_interface()
+            else:
+                # Fallback to normal setup
+                self._start_setup_wizard()
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to start setup with import: {str(e)}")
+            logging.error(f"Setup with import error: {e}")
+            # Fallback to normal setup
+            self._start_setup_wizard()
 
     def _create_status_bar(self):
         """Create modern status bar with improved styling"""
@@ -3269,6 +3587,42 @@ class SimpleOptimizerApp(tk.Tk):
             # Create window on first use
             config = self.window_configs.get(plot_type, {})
 
+            # Special case for uncertainty analysis - use dedicated control panel
+            if plot_type == "gp_uncertainty" and UNCERTAINTY_ANALYSIS_CONTROLS_AVAILABLE:
+                try:
+                    uncertainty_control = create_uncertainty_analysis_control_panel(
+                        parent=self,
+                        plot_type=plot_type,
+                        params_config=config.get("params_config", {}),
+                        responses_config=config.get("responses_config", {}),
+                        update_callback=lambda: self._update_gp_uncertainty_map_plot(self.plot_manager),
+                    )
+                    self.enhanced_controls[plot_type] = uncertainty_control
+                    self.uncertainty_analysis_control = uncertainty_control  # Store reference for the plotting method
+                    uncertainty_control.show()
+                    logger.info(f"Created and opened uncertainty analysis controls")
+                    return
+                except Exception as e:
+                    logger.warning(f"Could not create uncertainty analysis controls: {e}")
+
+            # Special case for model diagnostics - use dedicated control panel
+            if plot_type == "model_diagnostics" and MODEL_DIAGNOSTICS_CONTROLS_AVAILABLE:
+                try:
+                    model_diagnostics_control = create_model_diagnostics_control_panel(
+                        parent=self,
+                        plot_type=plot_type,
+                        params_config=config.get("params_config", {}),
+                        responses_config=config.get("responses_config", {}),
+                        update_callback=lambda: self._update_model_diagnostics_plots(self.plot_manager),
+                    )
+                    self.enhanced_controls[plot_type] = model_diagnostics_control
+                    self.model_diagnostics_control = model_diagnostics_control  # Store reference
+                    model_diagnostics_control.show()
+                    logger.info(f"Created and opened model diagnostics controls")
+                    return
+                except Exception as e:
+                    logger.warning(f"Could not create model diagnostics controls: {e}")
+
             # Try windowed controls first
             if WINDOW_CONTROLS_AVAILABLE:
                 try:
@@ -3636,31 +3990,48 @@ class SimpleOptimizerApp(tk.Tk):
             self.controller.optimizer.get_pareto_front()
         )
 
-        # Get axis ranges
-        ranges = self._get_axis_ranges("pareto")
-
-        if not pareto_X_df.empty and not pareto_obj_df.empty:
-            plot_manager.create_pareto_plot(
-                self.pareto_fig,
-                self.pareto_canvas,
-                self.pareto_x_var.get(),
-                self.pareto_y_var.get(),
-                pareto_X_df,
-                pareto_obj_df,
-                x_range=ranges.get("x_range"),
-                y_range=ranges.get("y_range"),
-            )
+        # Try to get settings from specialized control panel first
+        control_panel = self.enhanced_controls.get("pareto") if hasattr(self, "enhanced_controls") else None
+        if control_panel and hasattr(control_panel, 'get_display_options'):
+            # Use settings from specialized control panel
+            display_options = control_panel.get_display_options()
+            objectives = control_panel.get_objectives()
+            ranges = control_panel.get_axis_ranges()
+            
+            x_obj = objectives.get("x_objective", self.pareto_x_var.get())
+            y_obj = objectives.get("y_objective", self.pareto_y_var.get())
+            
+            show_all_solutions = display_options.get("show_all_solutions", True)
+            show_pareto_points = display_options.get("show_pareto_points", True)
+            show_pareto_front = display_options.get("show_pareto_front", True)
+            show_legend = display_options.get("show_legend", True)
+            
+            logger.debug(f"Using Pareto control panel settings: {display_options}")
         else:
-            plot_manager.create_pareto_plot(
-                self.pareto_fig,
-                self.pareto_canvas,
-                self.pareto_x_var.get(),
-                self.pareto_y_var.get(),
-                pareto_X_df,
-                pareto_obj_df,
-                x_range=ranges.get("x_range"),
-                y_range=ranges.get("y_range"),
-            )
+            # Fallback to GUI variables
+            ranges = self._get_axis_ranges("pareto")
+            x_obj = self.pareto_x_var.get()
+            y_obj = self.pareto_y_var.get()
+            show_all_solutions = self.pareto_show_all_solutions_var.get()
+            show_pareto_points = self.pareto_show_pareto_points_var.get()
+            show_pareto_front = self.pareto_show_pareto_front_var.get()
+            show_legend = self.pareto_show_legend_var.get()
+            logger.debug("Using fallback Pareto settings from GUI variables")
+
+        plot_manager.create_pareto_plot(
+            self.pareto_fig,
+            self.pareto_canvas,
+            x_obj,
+            y_obj,
+            pareto_X_df,
+            pareto_obj_df,
+            x_range=ranges.get("x_range"),
+            y_range=ranges.get("y_range"),
+            show_all_solutions=show_all_solutions,
+            show_pareto_points=show_pareto_points,
+            show_pareto_front=show_pareto_front,
+            show_legend=show_legend,
+        )
         self.pareto_canvas.draw()
         self.pareto_canvas.get_tk_widget().update()
 
@@ -3671,14 +4042,37 @@ class SimpleOptimizerApp(tk.Tk):
             
         logger.debug("Updating progress plot.")
         
-        # Get axis ranges for progress plot
-        ranges = self._get_axis_ranges("progress")
+        # Try to get settings from specialized control panel first
+        control_panel = self.enhanced_controls.get("progress") if hasattr(self, "enhanced_controls") else None
+        if control_panel and hasattr(control_panel, 'get_display_options'):
+            # Use settings from specialized control panel
+            display_options = control_panel.get_display_options()
+            ranges = control_panel.get_axis_ranges()
+            
+            show_raw_hv = display_options.get("show_raw_hv", True)
+            show_normalized_hv = display_options.get("show_normalized_hv", True)
+            show_trend = display_options.get("show_trend", True)
+            show_legend = display_options.get("show_legend", True)
+            
+            logger.debug(f"Using Progress control panel settings: {display_options}")
+        else:
+            # Fallback to GUI variables
+            ranges = self._get_axis_ranges("progress")
+            show_raw_hv = self.progress_show_raw_hv_var.get()
+            show_normalized_hv = self.progress_show_normalized_hv_var.get()
+            show_trend = self.progress_show_trend_var.get()
+            show_legend = self.progress_show_legend_var.get()
+            logger.debug("Using fallback Progress settings from GUI variables")
         
         plot_manager.create_progress_plot(
             self.progress_fig, 
             self.progress_canvas,
             x_range=ranges.get("x_range"),
-            y_range=ranges.get("y_range")
+            y_range=ranges.get("y_range"),
+            show_raw_hv=show_raw_hv,
+            show_normalized_hv=show_normalized_hv,
+            show_trend=show_trend,
+            show_legend=show_legend
         )
         self.progress_canvas.draw()
         self.progress_canvas.get_tk_widget().update()
@@ -3690,6 +4084,17 @@ class SimpleOptimizerApp(tk.Tk):
             
         logger.debug("Updating GP Slice plot.")
         ranges = self._get_axis_ranges("gp_slice")
+        
+        # Get display and style options from control panel
+        control_panel = self.enhanced_controls.get("gp_slice") if hasattr(self, "enhanced_controls") else None
+        display_options = {}
+        style_options = {}
+        
+        if control_panel and hasattr(control_panel, 'get_display_options'):
+            display_options = control_panel.get_display_options()
+        if control_panel and hasattr(control_panel, 'get_style_options'):
+            style_options = control_panel.get_style_options()
+        
         plot_manager.create_gp_slice_plot(
             self.gp_slice_fig,
             self.gp_slice_canvas,
@@ -3699,6 +4104,16 @@ class SimpleOptimizerApp(tk.Tk):
             float(self.gp_fixed_value_var.get()),
             x_range=ranges.get("x_range"),
             y_range=ranges.get("y_range"),
+            show_mean_line=display_options.get("show_mean_line", True),
+            show_68_ci=display_options.get("show_68_ci", True),
+            show_95_ci=display_options.get("show_95_ci", True),
+            show_data_points=display_options.get("show_data_points", True),
+            show_legend=display_options.get("show_legend", True),
+            show_grid=display_options.get("show_grid", True),
+            show_diagnostics=display_options.get("show_diagnostics", True),
+            mean_line_style=style_options.get("mean_line_style", "solid"),
+            ci_transparency=style_options.get("ci_transparency", "medium"),
+            data_point_size=style_options.get("data_point_size", "medium")
         )
         self.gp_slice_canvas.draw()
         self.gp_slice_canvas.get_tk_widget().update()
@@ -3716,6 +4131,7 @@ class SimpleOptimizerApp(tk.Tk):
         plot_style = "surface"
         show_uncertainty = False
         show_contours = True
+        show_data_points = True
         
         # Try to get settings from 3D surface control panel
         control_panel = self.enhanced_controls.get("3d_surface")
@@ -3728,6 +4144,7 @@ class SimpleOptimizerApp(tk.Tk):
                 if settings:
                     resolution = max(10, min(200, settings.get('x_resolution', 60)))
                     show_contours = settings.get('show_contours', True)
+                    show_data_points = settings.get('show_data_points', True)
                     show_uncertainty = False  # Could be mapped to a setting if available
                     
                     # Determine plot style based on wireframe and surface_fill settings
@@ -3741,7 +4158,7 @@ class SimpleOptimizerApp(tk.Tk):
                     else:
                         plot_style = "surface"
                 
-                logger.info(f"Using 3D surface settings - resolution: {resolution}, style: {plot_style}, contours: {show_contours}")
+                logger.info(f"Using 3D surface settings - resolution: {resolution}, style: {plot_style}, contours: {show_contours}, data_points: {show_data_points}")
                 
             except Exception as e:
                 logger.warning(f"Error getting surface settings: {e}, using defaults")
@@ -3759,6 +4176,7 @@ class SimpleOptimizerApp(tk.Tk):
             plot_style=plot_style,
             show_uncertainty=show_uncertainty,
             show_contours=show_contours,
+            show_data_points=show_data_points,
         )
         self.surface_3d_canvas.draw()
         self.surface_3d_canvas.get_tk_widget().update()
@@ -3787,82 +4205,124 @@ class SimpleOptimizerApp(tk.Tk):
         if not hasattr(self, "gp_uncertainty_map_fig"):
             return
             
-        logger.debug("Updating Enhanced GP Uncertainty Map plot.")
+        logger.debug("Updating Uncertainty Analysis plot.")
 
-        # Get all the enhanced control values
-        plot_style = getattr(
-            self,
-            "gp_uncertainty_plot_style_var",
-            tk.StringVar(value="heatmap"),
-        ).get()
-        uncertainty_metric = getattr(
-            self,
-            "gp_uncertainty_metric_var",
-            tk.StringVar(value="data_density"),
-        ).get()
-        colormap = getattr(
-            self, "gp_uncertainty_colormap_var", tk.StringVar(value="Reds")
-        ).get()
-        resolution = int(
-            getattr(
+        # Check if we have the new uncertainty analysis control panel
+        if hasattr(self, 'uncertainty_analysis_control') and self.uncertainty_analysis_control:
+            # Get settings from new control panel
+            display_options = self.uncertainty_analysis_control.get_display_options()
+            parameters = self.uncertainty_analysis_control.get_parameters()
+            settings = self.uncertainty_analysis_control.get_uncertainty_settings()
+            
+            # Use new control panel parameters
+            response_name = parameters['response']
+            param1_name = parameters['x_parameter']
+            param2_name = parameters['y_parameter']
+            plot_style = settings['plot_style']
+            uncertainty_metric = settings['uncertainty_metric']
+            colormap = settings['colormap']
+            resolution = settings['resolution']
+            show_experimental_data = display_options['show_experimental_data']
+            show_gp_uncertainty = display_options['show_gp_uncertainty']
+            show_data_density = display_options['show_data_density']
+            show_statistical_deviation = display_options['show_statistical_deviation']
+        else:
+            # Fallback to old control values for backward compatibility
+            plot_style = getattr(
                 self,
-                "gp_uncertainty_resolution_var",
-                tk.StringVar(value="70"),
+                "gp_uncertainty_plot_style_var",
+                tk.StringVar(value="heatmap"),
             ).get()
-        )
-        show_data = getattr(
-            self, "gp_uncertainty_show_data_var", tk.BooleanVar(value=True)
-        ).get()
+            uncertainty_metric = getattr(
+                self,
+                "gp_uncertainty_metric_var",
+                tk.StringVar(value="gp_uncertainty"),
+            ).get()
+            colormap = getattr(
+                self, "gp_uncertainty_colormap_var", tk.StringVar(value="Reds")
+            ).get()
+            resolution = int(
+                getattr(
+                    self,
+                    "gp_uncertainty_resolution_var",
+                    tk.StringVar(value="70"),
+                ).get()
+            )
+            show_experimental_data = getattr(
+                self, "gp_uncertainty_show_data_var", tk.BooleanVar(value=True)
+            ).get()
+            
+            # Default parameters for fallback
+            response_name = self.gp_uncertainty_response_var.get()
+            param1_name = self.gp_uncertainty_param1_var.get()
+            param2_name = self.gp_uncertainty_param2_var.get()
+            show_gp_uncertainty = uncertainty_metric == "gp_uncertainty"
+            show_data_density = uncertainty_metric == "data_density"
+            show_statistical_deviation = uncertainty_metric in ["std", "variance", "coefficient_of_variation"]
 
         plot_manager.create_gp_uncertainty_map(
             self.gp_uncertainty_map_fig,
             self.gp_uncertainty_map_canvas,
-            self.gp_uncertainty_response_var.get(),
-            self.gp_uncertainty_param1_var.get(),
-            self.gp_uncertainty_param2_var.get(),
+            response_name,
+            param1_name,
+            param2_name,
             plot_style=plot_style,
             uncertainty_metric=uncertainty_metric,
             colormap=colormap,
             resolution=resolution,
-            show_experimental_data=show_data,
+            show_experimental_data=show_experimental_data,
+            show_gp_uncertainty=show_gp_uncertainty,
+            show_data_density=show_data_density,
+            show_statistical_deviation=show_statistical_deviation,
         )
         self.gp_uncertainty_map_canvas.draw()
         self.gp_uncertainty_map_canvas.get_tk_widget().update()
 
     def _update_model_diagnostics_plots(self, plot_manager):
-        """Update the Model Diagnostics plots based on selected sub-tab."""
-        # Determine which sub-tab is active within Model Diagnostics
-        if not hasattr(self, "diagnostics_notebook") or not self.diagnostics_notebook:
-            logger.warning("Diagnostics notebook not found or not available")
+        """Update the Model Diagnostics plot based on control panel settings."""
+        if not hasattr(self, "model_diagnostics_fig"):
+            logger.warning("Model diagnostics figure not found or not available")
             return
             
-        logger.debug("Found diagnostics notebook, checking sub-tab")
-        selected_diagnostics_tab_id = self.diagnostics_notebook.select()
-        selected_diagnostics_tab_text = self.diagnostics_notebook.tab(
-            selected_diagnostics_tab_id, "text"
-        )
-        logger.debug(
-            f"Selected diagnostics sub-tab: {selected_diagnostics_tab_text}"
-        )
+        logger.debug("Updating Model Diagnostics plot")
+        
+        # Try to get settings from specialized control panel first
+        control_panel = self.enhanced_controls.get("model_diagnostics")
+        if control_panel and hasattr(control_panel, 'get_diagnostic_settings'):
+            # Use settings from specialized control panel
+            settings = control_panel.get_diagnostic_settings()
+            response_name = settings.get("response_name", self.model_diagnostics_response_var.get() if hasattr(self, 'model_diagnostics_response_var') else "")
+            diagnostic_type = settings.get("diagnostic_type", "residuals")
+            
+            logger.debug(f"Using diagnostic type from control panel: {diagnostic_type} for response: {response_name}")
+        else:
+            # Fallback to legacy variables
+            response_name = self.model_diagnostics_response_var.get() if hasattr(self, 'model_diagnostics_response_var') else ""
+            diagnostic_type = "residuals"  # Default to residuals
+            
+            logger.debug(f"Using fallback diagnostic type: {diagnostic_type} for response: {response_name}")
 
-        if selected_diagnostics_tab_text == "Parity Plot":
-            if hasattr(self, "parity_fig"):
-                logger.debug("Updating Parity Plot.")
-                response_name = self.parity_response_var.get()
-                plot_manager.create_parity_plot(
-                    self.parity_fig, self.parity_canvas, response_name
+        # Create the appropriate model analysis plot
+        if response_name:
+            try:
+                plot_manager.create_model_analysis_plot(
+                    self.model_diagnostics_fig, self.model_diagnostics_canvas, response_name, diagnostic_type
                 )
-                self.parity_canvas.draw()
-                self.parity_canvas.get_tk_widget().update()
-        elif selected_diagnostics_tab_text == "Residuals Plot":
-            if hasattr(self, "residuals_fig"):
-                logger.debug("Updating Residuals Plot.")
-                response_name = self.residuals_response_var.get()
-                plot_manager.create_residuals_plot(
-                    self.residuals_fig, self.residuals_canvas, response_name
-                )
-                self.residuals_canvas.draw()
-                self.residuals_canvas.get_tk_widget().update()
+                self.model_diagnostics_canvas.draw()
+                self.model_diagnostics_canvas.get_tk_widget().update()
+            except Exception as e:
+                logger.error(f"Error creating model diagnostics plot: {e}")
+                # Show error message on plot
+                self.model_diagnostics_fig.clear()
+                ax = self.model_diagnostics_fig.add_subplot(111)
+                ax.text(0.5, 0.5, f"Error creating {diagnostic_type} plot:\n{str(e)}", 
+                       ha='center', va='center', transform=ax.transAxes, 
+                       fontsize=10, color='red')
+                ax.set_title(f"Model Diagnostics - {diagnostic_type.title()}")
+                self.model_diagnostics_canvas.draw()
+        else:
+            # No response selected, show placeholder
+            self._draw_model_diagnostics_placeholder()
 
     def _update_sensitivity_analysis_plot(self, plot_manager):
         """Update the Sensitivity Analysis plot."""
@@ -3967,6 +4427,9 @@ class SimpleOptimizerApp(tk.Tk):
                 duration = perf_monitor.end_timer("update_all_plots")
                 if duration > 1.0:  # Log slow plot updates
                     logger.warning(f"Slow plot update: {duration:.2f}s for tab '{current_tab}'")
+            
+            # Update experimental data display
+            self._update_experimental_data_display()
             
             self.update_idletasks()
             self.update()

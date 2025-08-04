@@ -241,6 +241,91 @@ class SimpleController:
         finally:
             self._set_busy(False)
 
+    def setup_optimization_with_import(
+        self,
+        params_config: Dict[str, Dict[str, Any]],
+        responses_config: Dict[str, Dict[str, Any]],
+        data: pd.DataFrame,
+        general_constraints: List[str] = None,
+        initial_sampling_method: str = "random",
+    ) -> None:
+        """
+        Initialize optimization with imported CSV data.
+        
+        Args:
+            params_config: Parameter configuration from import wizard
+            responses_config: Response configuration from import wizard
+            data: Imported and validated DataFrame
+            general_constraints: List of constraints (optional)
+            initial_sampling_method: Sampling method for additional suggestions
+        """
+        try:
+            self._set_busy(True)
+            
+            logger.info("Setting up optimization with imported data")
+            logger.info(f"Imported data shape: {data.shape}")
+            logger.info(f"Parameters: {list(params_config.keys())}")
+            logger.info(f"Responses: {list(responses_config.keys())}")
+            
+            # Set default constraints if none provided
+            if general_constraints is None:
+                general_constraints = []
+            
+            # Validate the configuration
+            self._validate_optimization_config(params_config, responses_config)
+            
+            # Create optimizer with imported configuration
+            from .optimizer import EnhancedMultiObjectiveOptimizer
+            
+            self.optimizer = EnhancedMultiObjectiveOptimizer(
+                params_config=params_config,
+                responses_config=responses_config,
+                general_constraints=general_constraints,
+                initial_sampling_method=initial_sampling_method,
+            )
+            
+            logger.info("Optimizer created with imported configuration")
+            
+            # Load the imported data into the optimizer progressively to create proper iteration history
+            logger.info(f"Loading {len(data)} data points progressively to build iteration history")
+            
+            # Add data points one by one to create iteration history for hypervolume progress
+            for i, (idx, row) in enumerate(data.iterrows()):
+                single_row_df = pd.DataFrame([row])
+                self.optimizer.add_experimental_data(single_row_df)
+                logger.debug(f"Added data point {i+1}/{len(data)} to iteration history")
+            
+            logger.info(f"Successfully loaded all {len(data)} data points with {len(self.optimizer.iteration_history)} iterations")
+            
+            # Initialize plotting manager
+            try:
+                from ..utils.plotting import SimplePlotManager
+                self.plot_manager = SimplePlotManager(self.optimizer)
+                logger.info("Plot manager initialized")
+                if hasattr(self.view, "set_plot_manager"):
+                    self.view.set_plot_manager(self.plot_manager)
+            except ImportError:
+                logger.warning("Plot manager unavailable - continuing without plotting")
+                self.plot_manager = None
+            
+            # Store imported data for reference
+            self.imported_data = data
+            self.imported_params_config = params_config
+            self.imported_responses_config = responses_config
+            
+            # Update view status
+            self.view.set_status(f"Optimization ready with {len(data)} imported data points")
+            
+            logger.info("Import-based optimization setup completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to setup optimization with import: {e}", exc_info=True)
+            if hasattr(self.view, "show_error"):
+                self.view.show_error("Import Setup Error", f"Failed to setup with imported data: {str(e)}")
+            raise
+        finally:
+            self._set_busy(False)
+
     def _generate_initial_suggestion(self) -> Dict[str, Any]:
         """
         Generates the very first experiment suggestion when a new optimization starts.

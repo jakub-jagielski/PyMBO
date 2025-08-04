@@ -1,20 +1,18 @@
 """
-3D Surface Plot Controls Module
-Specialized control panels for 3D surface plots with extensive customization options
+Uncertainty Analysis Controls Module
+Specialized control panel for uncertainty analysis plots with user-friendly display options
 """
 
 import tkinter as tk
 from tkinter import ttk
 import logging
 from typing import Dict, Any, Callable
-import matplotlib.pyplot as plt
-from matplotlib import cm
 
 logger = logging.getLogger(__name__)
 
 
-class Surface3DControlPanel:
-    """Specialized control panel for 3D surface plots with extensive options"""
+class UncertaintyAnalysisControlPanel:
+    """Specialized control panel for uncertainty analysis plots"""
     
     def __init__(self, parent, plot_type: str, params_config: Dict[str, Any] = None, 
                  responses_config: Dict[str, Any] = None, update_callback: Callable = None):
@@ -30,81 +28,53 @@ class Surface3DControlPanel:
             'x_min': {'var': tk.StringVar(value='auto'), 'auto': True},
             'x_max': {'var': tk.StringVar(value='auto'), 'auto': True},
             'y_min': {'var': tk.StringVar(value='auto'), 'auto': True},
-            'y_max': {'var': tk.StringVar(value='auto'), 'auto': True},
-            'z_min': {'var': tk.StringVar(value='auto'), 'auto': True},
-            'z_max': {'var': tk.StringVar(value='auto'), 'auto': True}
+            'y_max': {'var': tk.StringVar(value='auto'), 'auto': True}
         }
         
-        # Initialize Surface 3D-specific main display controls
-        self.show_surface_var = tk.BooleanVar(value=True)
-        self.show_data_points_var = tk.BooleanVar(value=False)
-        self.show_contours_var = tk.BooleanVar(value=False)
-        self.show_wireframe_var = tk.BooleanVar(value=False)
-        self.show_colorbar_var = tk.BooleanVar(value=True)
+        # Main display controls - what type of uncertainty to show
+        # Use StringVar for radio button behavior instead of multiple BooleanVars
+        self.uncertainty_type_var = tk.StringVar(value="data_density")
+        self.show_original_data_var = tk.BooleanVar(value=True)
+        
+        # Parameter selection for axes
+        params_list = list(self.params_config.keys())
+        self.x_parameter_var = tk.StringVar(value=params_list[0] if params_list else "")
+        self.y_parameter_var = tk.StringVar(value=params_list[1] if len(params_list) > 1 else "")
+        
+        # Response selection
+        responses_list = list(self.responses_config.keys())
+        self.response_var = tk.StringVar(value=responses_list[0] if responses_list else "")
         
         # Advanced controls collapsed state
         self.advanced_expanded_var = tk.BooleanVar(value=False)
         
-        # Advanced 3D Surface specific settings
-        self.surface_settings = {
+        # Advanced uncertainty analysis specific settings
+        self.uncertainty_settings = {
+            # Visualization type
+            'uncertainty_metric': tk.StringVar(value='data_density'),  # 'gp_uncertainty', 'data_density', 'std', 'variance'
+            'plot_style': tk.StringVar(value='heatmap'),  # 'heatmap', 'contour', 'filled_contour'
             
-            # Surface appearance
-            'colormap': tk.StringVar(value='viridis'),
+            # Resolution and quality
+            'resolution': tk.IntVar(value=70),
+            'colormap': tk.StringVar(value='Reds'),
+            
+            
+            # Visualization appearance
+            'show_colorbar': tk.BooleanVar(value=True),
+            'contour_levels': tk.IntVar(value=15),
             'alpha': tk.DoubleVar(value=0.8),
-            'surface_fill': tk.BooleanVar(value=True),
-            'edge_color': tk.StringVar(value='black'),
-            'edge_alpha': tk.DoubleVar(value=0.3),
-            'antialiased': tk.BooleanVar(value=True),
             
-            # Mesh resolution
-            'x_resolution': tk.IntVar(value=50),
-            'y_resolution': tk.IntVar(value=50),
-            'interpolation_method': tk.StringVar(value='linear'),
-            
-            # Lighting and shading
-            'lighting_enabled': tk.BooleanVar(value=True),
-            'light_elevation': tk.DoubleVar(value=45),
-            'light_azimuth': tk.DoubleVar(value=45),
-            'shade': tk.BooleanVar(value=True),
-            'norm_colors': tk.BooleanVar(value=True),
-            
-            # View angle
-            'elevation': tk.DoubleVar(value=30),
-            'azimuth': tk.DoubleVar(value=45),
-            'roll': tk.DoubleVar(value=0),
-            'distance': tk.DoubleVar(value=10),
-            
-            # Contour options
-            'contour_levels': tk.IntVar(value=10),
-            'contour_offset': tk.DoubleVar(value=-0.1),
-            'contour_alpha': tk.DoubleVar(value=0.6),
-            
-            # Color bar
-            'colorbar_position': tk.StringVar(value='right'),
-            'colorbar_shrink': tk.DoubleVar(value=0.8),
-            'colorbar_aspect': tk.IntVar(value=20),
-            
-            # Data points
-            'data_point_size': tk.DoubleVar(value=30),
-            'data_point_color': tk.StringVar(value='red'),
+            # Data point appearance
+            'data_point_size': tk.DoubleVar(value=50),
+            'data_point_color': tk.StringVar(value='black'),
             'data_point_alpha': tk.DoubleVar(value=0.8),
             
-            # Grid and axes
+            # Grid and labels
             'show_grid': tk.BooleanVar(value=True),
             'grid_alpha': tk.DoubleVar(value=0.3),
-            'axes_visible': tk.BooleanVar(value=True),
-            'tick_density': tk.StringVar(value='medium'),
-            
-            # Labels and title
-            'x_label': tk.StringVar(value='X Parameter'),
-            'y_label': tk.StringVar(value='Y Parameter'),
-            'z_label': tk.StringVar(value='Response'),
-            'title': tk.StringVar(value='3D Surface Plot'),
-            'title_size': tk.IntVar(value=12),
-            'label_size': tk.IntVar(value=10),
         }
         
-        logger.info(f"3D Surface control panel created for {plot_type}")
+        logger.info(f"Uncertainty Analysis control panel created for {plot_type}")
     
     def create_window(self):
         """Create the control panel window"""
@@ -113,7 +83,7 @@ class Surface3DControlPanel:
             return
             
         self.window = tk.Toplevel(self.parent)
-        self.window.title(f"🎛️ 3D Surface Plot Controls")
+        self.window.title(f"🎛️ Uncertainty Analysis Controls")
         self.window.geometry("480x700")
         self.window.resizable(True, True)
         
@@ -180,24 +150,45 @@ class Surface3DControlPanel:
         y = (self.window.winfo_screenheight() // 2) - (self.window.winfo_height() // 2)
         self.window.geometry(f"+{x}+{y}")
         
-        logger.info(f"3D Surface control window created")
+        logger.info(f"Uncertainty Analysis control window created")
     
     def _create_display_controls(self, parent):
         """Create display option controls"""
-        # Surface elements frame
-        surface_frame = ttk.LabelFrame(parent, text="Surface Elements")
-        surface_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Parameter selection frame
+        param_frame = ttk.LabelFrame(parent, text="Parameter Selection")
+        param_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Checkbutton(surface_frame, text="Show 3D Surface", 
-                       variable=self.show_surface_var,
+        # Response selection
+        ttk.Label(param_frame, text="Response:").pack(anchor='w', padx=10, pady=2)
+        response_combo = ttk.Combobox(param_frame, textvariable=self.response_var,
+                                     values=list(self.responses_config.keys()), state="readonly")
+        response_combo.pack(fill=tk.X, padx=10, pady=2)
+        response_combo.bind('<<ComboboxSelected>>', self._on_parameter_change)
+        
+        # X-axis parameter
+        ttk.Label(param_frame, text="X-Axis Parameter:").pack(anchor='w', padx=10, pady=2)
+        x_param_combo = ttk.Combobox(param_frame, textvariable=self.x_parameter_var,
+                                    values=list(self.params_config.keys()), state="readonly")
+        x_param_combo.pack(fill=tk.X, padx=10, pady=2)
+        x_param_combo.bind('<<ComboboxSelected>>', self._on_parameter_change)
+        
+        # Y-axis parameter
+        ttk.Label(param_frame, text="Y-Axis Parameter:").pack(anchor='w', padx=10, pady=2)
+        y_param_combo = ttk.Combobox(param_frame, textvariable=self.y_parameter_var,
+                                    values=list(self.params_config.keys()), state="readonly")
+        y_param_combo.pack(fill=tk.X, padx=10, pady=2)
+        y_param_combo.bind('<<ComboboxSelected>>', self._on_parameter_change)
+        
+        # Uncertainty visualization frame
+        uncertainty_frame = ttk.LabelFrame(parent, text="Uncertainty Visualization")
+        uncertainty_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Radiobutton(uncertainty_frame, text="Show GP Prediction Uncertainty", 
+                       variable=self.uncertainty_type_var, value="gp_uncertainty",
                        command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
         
-        ttk.Checkbutton(surface_frame, text="Show Wireframe", 
-                       variable=self.show_wireframe_var,
-                       command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
-        
-        ttk.Checkbutton(surface_frame, text="Show Contour Lines", 
-                       variable=self.show_contours_var,
+        ttk.Radiobutton(uncertainty_frame, text="Show Data Density", 
+                       variable=self.uncertainty_type_var, value="data_density",
                        command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
         
         # Data overlay frame
@@ -205,15 +196,7 @@ class Surface3DControlPanel:
         data_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ttk.Checkbutton(data_frame, text="Show Original Data Points", 
-                       variable=self.show_data_points_var,
-                       command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
-        
-        # Visual elements frame
-        visual_frame = ttk.LabelFrame(parent, text="Visual Elements")
-        visual_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Checkbutton(visual_frame, text="Show Color Bar", 
-                       variable=self.show_colorbar_var,
+                       variable=self.show_original_data_var,
                        command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
         
         # Advanced controls collapsible section
@@ -235,74 +218,65 @@ class Surface3DControlPanel:
         info_frame.pack(fill=tk.X, padx=10, pady=10)
         
         info_text = (
-            "• Surface: 3D surface representation of data\n"
-            "• Wireframe: Grid lines showing surface structure\n"
-            "• Contours: 2D contour lines projected below surface\n"
-            "• Data Points: Original experimental observations\n"
-            "• Color Bar: Legend showing value-to-color mapping\n\n"
-            "💡 Advanced controls include mesh resolution, lighting,\n"
-            "view angles, and detailed appearance settings"
+            "• GP Uncertainty: Model's predictive uncertainty\n"
+            "• Data Density: Spatial distribution of experimental data\n"
+            "• Original Data: Experimental observation points\n\n"
+            "💡 Select one uncertainty visualization type above.\n"
+            "Advanced controls include resolution, colormaps,\n"
+            "and detailed appearance settings"
         )
         info_label = ttk.Label(info_frame, text=info_text, 
                               font=('TkDefaultFont', 8, 'italic'),
                               foreground='gray',
-                              justify='left')
+                              justify='left',
+                              wraplength=400)
         info_label.pack(padx=10, pady=10, anchor='w')
     
     def _create_advanced_controls(self, parent):
         """Create advanced controls that are collapsed by default"""
-        # Resolution controls
-        res_frame = ttk.LabelFrame(parent, text="Mesh Resolution")
-        res_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Visualization type controls
+        viz_frame = ttk.LabelFrame(parent, text="Visualization Settings")
+        viz_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        res_grid = ttk.Frame(res_frame)
-        res_grid.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(viz_frame, text="Plot Style:").pack(anchor='w', padx=10, pady=2)
+        style_combo = ttk.Combobox(viz_frame, textvariable=self.uncertainty_settings['plot_style'],
+                                  values=['heatmap', 'contour', 'filled_contour'], state="readonly")
+        style_combo.pack(fill=tk.X, padx=10, pady=2)
+        style_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
         
-        ttk.Label(res_grid, text="X Resolution:").grid(row=0, column=0, sticky='w')
-        ttk.Spinbox(res_grid, from_=10, to=200, textvariable=self.surface_settings['x_resolution'],
-                   width=10, command=self._on_advanced_change).grid(row=0, column=1, padx=5)
-        
-        ttk.Label(res_grid, text="Y Resolution:").grid(row=1, column=0, sticky='w', pady=(5, 0))
-        ttk.Spinbox(res_grid, from_=10, to=200, textvariable=self.surface_settings['y_resolution'],
-                   width=10, command=self._on_advanced_change).grid(row=1, column=1, padx=5, pady=(5, 0))
-        
-        # Appearance controls
-        appearance_frame = ttk.LabelFrame(parent, text="Surface Appearance")
-        appearance_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Label(appearance_frame, text="Colormap:").pack(anchor='w', padx=10, pady=2)
-        colormap_combo = ttk.Combobox(appearance_frame, textvariable=self.surface_settings['colormap'],
-                                     values=['viridis', 'plasma', 'inferno', 'magma', 'coolwarm', 
-                                            'RdYlBu', 'seismic', 'terrain'], state="readonly")
+        ttk.Label(viz_frame, text="Colormap:").pack(anchor='w', padx=10, pady=2)
+        colormap_combo = ttk.Combobox(viz_frame, textvariable=self.uncertainty_settings['colormap'],
+                                     values=['Reds', 'Blues', 'Greens', 'Oranges', 'viridis', 'plasma', 'coolwarm'], 
+                                     state="readonly")
         colormap_combo.pack(fill=tk.X, padx=10, pady=2)
         colormap_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
         
-        ttk.Label(appearance_frame, text="Surface Alpha:").pack(anchor='w', padx=10, pady=2)
-        ttk.Scale(appearance_frame, from_=0.0, to=1.0, variable=self.surface_settings['alpha'],
+        # Resolution controls
+        res_frame = ttk.LabelFrame(parent, text="Resolution & Quality")
+        res_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(res_frame, text="Grid Resolution:").pack(anchor='w', padx=10, pady=2)
+        ttk.Spinbox(res_frame, from_=30, to=200, textvariable=self.uncertainty_settings['resolution'],
+                   width=10, command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
+        
+        ttk.Label(res_frame, text="Contour Levels:").pack(anchor='w', padx=10, pady=2)
+        ttk.Spinbox(res_frame, from_=5, to=50, textvariable=self.uncertainty_settings['contour_levels'],
+                   width=10, command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
+        
+        
+        # Data point appearance
+        points_frame = ttk.LabelFrame(parent, text="Data Point Appearance")
+        points_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(points_frame, text="Point Size:").pack(anchor='w', padx=10, pady=2)
+        ttk.Scale(points_frame, from_=10, to=200, variable=self.uncertainty_settings['data_point_size'],
                  orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
         
-        # View angle controls
-        view_frame = ttk.LabelFrame(parent, text="View Angle")
-        view_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Label(view_frame, text="Elevation:").pack(anchor='w', padx=10, pady=2)
-        ttk.Scale(view_frame, from_=-90, to=90, variable=self.surface_settings['elevation'],
-                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
-        
-        ttk.Label(view_frame, text="Azimuth:").pack(anchor='w', padx=10, pady=2)
-        ttk.Scale(view_frame, from_=0, to=360, variable=self.surface_settings['azimuth'],
-                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
-        
-        # Lighting controls
-        lighting_frame = ttk.LabelFrame(parent, text="Lighting & Shading")
-        lighting_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Checkbutton(lighting_frame, text="Enable Lighting", 
-                       variable=self.surface_settings['lighting_enabled'],
-                       command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
-        ttk.Checkbutton(lighting_frame, text="Enable Shading", 
-                       variable=self.surface_settings['shade'],
-                       command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
+        ttk.Label(points_frame, text="Point Color:").pack(anchor='w', padx=10, pady=2)
+        color_combo = ttk.Combobox(points_frame, textvariable=self.uncertainty_settings['data_point_color'],
+                                  values=['black', 'red', 'blue', 'green', 'orange', 'purple'], state="readonly")
+        color_combo.pack(fill=tk.X, padx=10, pady=2)
+        color_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
     
     def _toggle_advanced_controls(self):
         """Toggle visibility of advanced controls"""
@@ -347,28 +321,11 @@ class Surface3DControlPanel:
         y_max_entry.grid(row=0, column=3)
         y_max_entry.bind('<KeyRelease>', self._on_axis_change)
         
-        # Z-axis section
-        z_frame = ttk.LabelFrame(parent, text="Z-Axis Range")
-        z_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        z_controls = ttk.Frame(z_frame)
-        z_controls.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Label(z_controls, text="Min:").grid(row=0, column=0, sticky='w', padx=(0, 5))
-        z_min_entry = ttk.Entry(z_controls, textvariable=self.axis_ranges['z_min']['var'], width=12)
-        z_min_entry.grid(row=0, column=1, padx=(0, 10))  
-        z_min_entry.bind('<KeyRelease>', self._on_axis_change)
-        
-        ttk.Label(z_controls, text="Max:").grid(row=0, column=2, sticky='w', padx=(0, 5))
-        z_max_entry = ttk.Entry(z_controls, textvariable=self.axis_ranges['z_max']['var'], width=12)
-        z_max_entry.grid(row=0, column=3)
-        z_max_entry.bind('<KeyRelease>', self._on_axis_change)
-        
         # Auto scale button
         auto_frame = ttk.Frame(parent)
         auto_frame.pack(pady=10)
         
-        auto_button = ttk.Button(auto_frame, text="🔄 Auto Scale All Axes", 
+        auto_button = ttk.Button(auto_frame, text="🔄 Auto Scale Both Axes", 
                                 command=self._auto_scale, style='Accent.TButton')
         auto_button.pack()
     
@@ -406,12 +363,20 @@ class Surface3DControlPanel:
         close_button = ttk.Button(button_frame, text="✖ Close", command=self.hide)
         close_button.pack(side=tk.RIGHT)
     
+    def _on_parameter_change(self, event=None):
+        """Handle parameter selection change"""
+        self._update_plot()
+    
     def _on_display_change(self):
         """Handle display option change"""
-        # Ensure at least the surface is shown for a meaningful plot
-        if not self.show_surface_var.get() and not self.show_wireframe_var.get() and not self.show_contours_var.get():
-            # If user unchecked everything, keep at least surface
-            self.show_surface_var.set(True)
+        # Get the selected uncertainty type
+        uncertainty_type = self.uncertainty_type_var.get()
+        
+        # Set the appropriate uncertainty metric
+        if uncertainty_type == "gp_uncertainty":
+            self.uncertainty_settings['uncertainty_metric'].set('gp_uncertainty')
+        elif uncertainty_type == "data_density":
+            self.uncertainty_settings['uncertainty_metric'].set('data_density')
         
         self._update_plot()
     
@@ -422,7 +387,7 @@ class Surface3DControlPanel:
     def _on_axis_change(self, event=None):
         """Handle axis range change"""
         # Parse the ranges and update
-        for axis in ['x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']:
+        for axis in ['x_min', 'x_max', 'y_min', 'y_max']:
             value = self.axis_ranges[axis]['var'].get().strip()
             if value.lower() == 'auto' or value == '':
                 self.axis_ranges[axis]['auto'] = True
@@ -439,7 +404,7 @@ class Surface3DControlPanel:
     
     def _auto_scale(self):
         """Reset to auto scaling"""
-        for axis in ['x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']:
+        for axis in ['x_min', 'x_max', 'y_min', 'y_max']:
             self.axis_ranges[axis]['var'].set('auto')
             self.axis_ranges[axis]['auto'] = True
         self._update_plot()
@@ -480,12 +445,10 @@ class Surface3DControlPanel:
         # X-axis range - get values and determine if auto
         x_min_val, x_max_val, x_auto = self._get_axis_value('x_min')
         y_min_val, y_max_val, y_auto = self._get_axis_value('y_min')
-        z_min_val, z_max_val, z_auto = self._get_axis_value('z_min')
         
         # Format for main GUI expectation: (min_val, max_val, is_auto)
         ranges['x_axis'] = (x_min_val, x_max_val, x_auto)
         ranges['y_axis'] = (y_min_val, y_max_val, y_auto)
-        ranges['z_axis'] = (z_min_val, z_max_val, z_auto)
         
         return ranges
     
@@ -512,18 +475,26 @@ class Surface3DControlPanel:
     
     def get_display_options(self):
         """Get the current display options"""
+        uncertainty_type = self.uncertainty_type_var.get()
         return {
-            'show_surface': self.show_surface_var.get(),
-            'show_wireframe': self.show_wireframe_var.get(),
-            'show_contours': self.show_contours_var.get(),
-            'show_data_points': self.show_data_points_var.get(),
-            'show_colorbar': self.show_colorbar_var.get()
+            'show_gp_uncertainty': uncertainty_type == "gp_uncertainty",
+            'show_data_density': uncertainty_type == "data_density", 
+            'show_statistical_deviation': False,  # Removed this option
+            'show_experimental_data': self.show_original_data_var.get()
         }
     
-    def get_surface_settings(self):
-        """Get all current 3D surface settings"""
+    def get_parameters(self):
+        """Get the selected parameters"""
+        return {
+            'response': self.response_var.get(),
+            'x_parameter': self.x_parameter_var.get(),
+            'y_parameter': self.y_parameter_var.get()
+        }
+    
+    def get_uncertainty_settings(self):
+        """Get all current uncertainty analysis settings"""
         settings = {}
-        for key, var in self.surface_settings.items():
+        for key, var in self.uncertainty_settings.items():
             try:
                 settings[key] = var.get()
             except:
@@ -535,10 +506,10 @@ class Surface3DControlPanel:
         return settings
 
 
-def create_surface_3d_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 
-                                   responses_config: Dict[str, Any] = None, update_callback: Callable = None) -> Surface3DControlPanel:
-    """Factory function to create a 3D surface control panel"""
-    logger.info(f"Creating specialized 3D surface control panel for {plot_type}")
-    control_panel = Surface3DControlPanel(parent, plot_type, params_config, responses_config, update_callback)
+def create_uncertainty_analysis_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 
+                                             responses_config: Dict[str, Any] = None, update_callback: Callable = None) -> UncertaintyAnalysisControlPanel:
+    """Factory function to create an Uncertainty Analysis control panel"""
+    logger.info(f"Creating specialized Uncertainty Analysis control panel for {plot_type}")
+    control_panel = UncertaintyAnalysisControlPanel(parent, plot_type, params_config, responses_config, update_callback)
     control_panel.create_window()
     return control_panel

@@ -1,20 +1,18 @@
 """
-3D Surface Plot Controls Module
-Specialized control panels for 3D surface plots with extensive customization options
+Model Diagnostics Controls Module
+Specialized control panel for model diagnostics with unified tool selection and display options
 """
 
 import tkinter as tk
 from tkinter import ttk
 import logging
 from typing import Dict, Any, Callable
-import matplotlib.pyplot as plt
-from matplotlib import cm
 
 logger = logging.getLogger(__name__)
 
 
-class Surface3DControlPanel:
-    """Specialized control panel for 3D surface plots with extensive options"""
+class ModelDiagnosticsControlPanel:
+    """Specialized control panel for model diagnostics plots"""
     
     def __init__(self, parent, plot_type: str, params_config: Dict[str, Any] = None, 
                  responses_config: Dict[str, Any] = None, update_callback: Callable = None):
@@ -30,81 +28,58 @@ class Surface3DControlPanel:
             'x_min': {'var': tk.StringVar(value='auto'), 'auto': True},
             'x_max': {'var': tk.StringVar(value='auto'), 'auto': True},
             'y_min': {'var': tk.StringVar(value='auto'), 'auto': True},
-            'y_max': {'var': tk.StringVar(value='auto'), 'auto': True},
-            'z_min': {'var': tk.StringVar(value='auto'), 'auto': True},
-            'z_max': {'var': tk.StringVar(value='auto'), 'auto': True}
+            'y_max': {'var': tk.StringVar(value='auto'), 'auto': True}
         }
         
-        # Initialize Surface 3D-specific main display controls
-        self.show_surface_var = tk.BooleanVar(value=True)
-        self.show_data_points_var = tk.BooleanVar(value=False)
-        self.show_contours_var = tk.BooleanVar(value=False)
-        self.show_wireframe_var = tk.BooleanVar(value=False)
-        self.show_colorbar_var = tk.BooleanVar(value=True)
+        # Main diagnostic tool selection
+        self.diagnostic_type_var = tk.StringVar(value="residuals")
+        
+        # Response selection
+        responses_list = list(self.responses_config.keys())
+        self.response_var = tk.StringVar(value=responses_list[0] if responses_list else "")
+        
+        # Display options
+        self.show_data_points_var = tk.BooleanVar(value=True)
+        self.show_reference_line_var = tk.BooleanVar(value=True)
+        self.show_statistics_var = tk.BooleanVar(value=True)
+        self.show_uncertainty_bands_var = tk.BooleanVar(value=True)
         
         # Advanced controls collapsed state
         self.advanced_expanded_var = tk.BooleanVar(value=False)
         
-        # Advanced 3D Surface specific settings
-        self.surface_settings = {
+        # Advanced diagnostic specific settings
+        self.diagnostic_settings = {
+            # Plot styling
+            'point_size': tk.DoubleVar(value=50),
+            'point_alpha': tk.DoubleVar(value=0.7),
+            'point_color': tk.StringVar(value='blue'),
             
-            # Surface appearance
-            'colormap': tk.StringVar(value='viridis'),
-            'alpha': tk.DoubleVar(value=0.8),
-            'surface_fill': tk.BooleanVar(value=True),
-            'edge_color': tk.StringVar(value='black'),
-            'edge_alpha': tk.DoubleVar(value=0.3),
-            'antialiased': tk.BooleanVar(value=True),
+            # Reference lines and statistics
+            'reference_line_style': tk.StringVar(value='dashed'),
+            'reference_line_color': tk.StringVar(value='red'),
+            'reference_line_width': tk.DoubleVar(value=1.5),
             
-            # Mesh resolution
-            'x_resolution': tk.IntVar(value=50),
-            'y_resolution': tk.IntVar(value=50),
-            'interpolation_method': tk.StringVar(value='linear'),
+            # Statistics display
+            'stats_position': tk.StringVar(value='upper_left'),
+            'stats_fontsize': tk.IntVar(value=10),
+            'show_rmse': tk.BooleanVar(value=True),
+            'show_mae': tk.BooleanVar(value=True),
+            'show_r2': tk.BooleanVar(value=True),
             
-            # Lighting and shading
-            'lighting_enabled': tk.BooleanVar(value=True),
-            'light_elevation': tk.DoubleVar(value=45),
-            'light_azimuth': tk.DoubleVar(value=45),
-            'shade': tk.BooleanVar(value=True),
-            'norm_colors': tk.BooleanVar(value=True),
+            # Feature importance specific
+            'importance_threshold': tk.DoubleVar(value=0.01),
+            'max_features': tk.IntVar(value=10),
             
-            # View angle
-            'elevation': tk.DoubleVar(value=30),
-            'azimuth': tk.DoubleVar(value=45),
-            'roll': tk.DoubleVar(value=0),
-            'distance': tk.DoubleVar(value=10),
+            # Uncertainty specific
+            'uncertainty_alpha': tk.DoubleVar(value=0.3),
+            'confidence_level': tk.DoubleVar(value=0.95),
             
-            # Contour options
-            'contour_levels': tk.IntVar(value=10),
-            'contour_offset': tk.DoubleVar(value=-0.1),
-            'contour_alpha': tk.DoubleVar(value=0.6),
-            
-            # Color bar
-            'colorbar_position': tk.StringVar(value='right'),
-            'colorbar_shrink': tk.DoubleVar(value=0.8),
-            'colorbar_aspect': tk.IntVar(value=20),
-            
-            # Data points
-            'data_point_size': tk.DoubleVar(value=30),
-            'data_point_color': tk.StringVar(value='red'),
-            'data_point_alpha': tk.DoubleVar(value=0.8),
-            
-            # Grid and axes
+            # Grid and labels
             'show_grid': tk.BooleanVar(value=True),
             'grid_alpha': tk.DoubleVar(value=0.3),
-            'axes_visible': tk.BooleanVar(value=True),
-            'tick_density': tk.StringVar(value='medium'),
-            
-            # Labels and title
-            'x_label': tk.StringVar(value='X Parameter'),
-            'y_label': tk.StringVar(value='Y Parameter'),
-            'z_label': tk.StringVar(value='Response'),
-            'title': tk.StringVar(value='3D Surface Plot'),
-            'title_size': tk.IntVar(value=12),
-            'label_size': tk.IntVar(value=10),
         }
         
-        logger.info(f"3D Surface control panel created for {plot_type}")
+        logger.info(f"Model Diagnostics control panel created for {plot_type}")
     
     def create_window(self):
         """Create the control panel window"""
@@ -113,7 +88,7 @@ class Surface3DControlPanel:
             return
             
         self.window = tk.Toplevel(self.parent)
-        self.window.title(f"🎛️ 3D Surface Plot Controls")
+        self.window.title(f"🎛️ Model Diagnostics Controls")
         self.window.geometry("480x700")
         self.window.resizable(True, True)
         
@@ -180,41 +155,60 @@ class Surface3DControlPanel:
         y = (self.window.winfo_screenheight() // 2) - (self.window.winfo_height() // 2)
         self.window.geometry(f"+{x}+{y}")
         
-        logger.info(f"3D Surface control window created")
+        logger.info(f"Model Diagnostics control window created")
     
     def _create_display_controls(self, parent):
         """Create display option controls"""
-        # Surface elements frame
-        surface_frame = ttk.LabelFrame(parent, text="Surface Elements")
-        surface_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Diagnostic Tool Selection
+        tool_frame = ttk.LabelFrame(parent, text="Diagnostic Tool Selection")
+        tool_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Checkbutton(surface_frame, text="Show 3D Surface", 
-                       variable=self.show_surface_var,
-                       command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
+        ttk.Radiobutton(tool_frame, text="Residuals Plot", 
+                       variable=self.diagnostic_type_var, value="residuals",
+                       command=self._on_diagnostic_change).pack(anchor='w', padx=10, pady=5)
         
-        ttk.Checkbutton(surface_frame, text="Show Wireframe", 
-                       variable=self.show_wireframe_var,
-                       command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
+        ttk.Radiobutton(tool_frame, text="Parity Plot (Predicted vs Actual)", 
+                       variable=self.diagnostic_type_var, value="predictions",
+                       command=self._on_diagnostic_change).pack(anchor='w', padx=10, pady=5)
         
-        ttk.Checkbutton(surface_frame, text="Show Contour Lines", 
-                       variable=self.show_contours_var,
-                       command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
+        ttk.Radiobutton(tool_frame, text="Uncertainty Analysis", 
+                       variable=self.diagnostic_type_var, value="uncertainty",
+                       command=self._on_diagnostic_change).pack(anchor='w', padx=10, pady=5)
         
-        # Data overlay frame
-        data_frame = ttk.LabelFrame(parent, text="Data Overlay")
-        data_frame.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Radiobutton(tool_frame, text="Feature Importance", 
+                       variable=self.diagnostic_type_var, value="feature_importance",
+                       command=self._on_diagnostic_change).pack(anchor='w', padx=10, pady=5)
         
-        ttk.Checkbutton(data_frame, text="Show Original Data Points", 
+        # Response Selection
+        response_frame = ttk.LabelFrame(parent, text="Response Selection")
+        response_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(response_frame, text="Response:").pack(anchor='w', padx=10, pady=2)
+        response_combo = ttk.Combobox(response_frame, textvariable=self.response_var,
+                                     values=list(self.responses_config.keys()), state="readonly")
+        response_combo.pack(fill=tk.X, padx=10, pady=2)
+        response_combo.bind('<<ComboboxSelected>>', self._on_response_change)
+        
+        # Display Options
+        display_frame = ttk.LabelFrame(parent, text="Display Options")
+        display_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Checkbutton(display_frame, text="Show Data Points", 
                        variable=self.show_data_points_var,
                        command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
         
-        # Visual elements frame
-        visual_frame = ttk.LabelFrame(parent, text="Visual Elements")
-        visual_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Checkbutton(visual_frame, text="Show Color Bar", 
-                       variable=self.show_colorbar_var,
+        ttk.Checkbutton(display_frame, text="Show Reference Line", 
+                       variable=self.show_reference_line_var,
                        command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
+        
+        ttk.Checkbutton(display_frame, text="Show Statistics", 
+                       variable=self.show_statistics_var,
+                       command=self._on_display_change).pack(anchor='w', padx=10, pady=5)
+        
+        # Create uncertainty-specific checkbox (will be shown/hidden based on selection)
+        self.uncertainty_checkbox = ttk.Checkbutton(display_frame, text="Show Uncertainty Bands", 
+                                                   variable=self.show_uncertainty_bands_var,
+                                                   command=self._on_display_change)
         
         # Advanced controls collapsible section
         advanced_frame = ttk.LabelFrame(parent, text="Advanced Controls")
@@ -235,81 +229,128 @@ class Surface3DControlPanel:
         info_frame.pack(fill=tk.X, padx=10, pady=10)
         
         info_text = (
-            "• Surface: 3D surface representation of data\n"
-            "• Wireframe: Grid lines showing surface structure\n"
-            "• Contours: 2D contour lines projected below surface\n"
-            "• Data Points: Original experimental observations\n"
-            "• Color Bar: Legend showing value-to-color mapping\n\n"
-            "💡 Advanced controls include mesh resolution, lighting,\n"
-            "view angles, and detailed appearance settings"
+            "• Residuals: Shows prediction errors (actual - predicted)\n"
+            "• Parity Plot: Compares actual vs predicted values\n"
+            "• Uncertainty: Shows prediction confidence intervals\n"
+            "• Feature Importance: Parameter sensitivity analysis\n\n"
+            "💡 Select a diagnostic tool above and choose response.\n"
+            "Advanced controls include styling and statistical options."
         )
         info_label = ttk.Label(info_frame, text=info_text, 
                               font=('TkDefaultFont', 8, 'italic'),
                               foreground='gray',
-                              justify='left')
+                              justify='left',
+                              wraplength=400)
         info_label.pack(padx=10, pady=10, anchor='w')
+        
+        # Update visibility based on initial selection
+        self._update_controls_visibility()
     
     def _create_advanced_controls(self, parent):
         """Create advanced controls that are collapsed by default"""
-        # Resolution controls
-        res_frame = ttk.LabelFrame(parent, text="Mesh Resolution")
-        res_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Plot Styling
+        style_frame = ttk.LabelFrame(parent, text="Plot Styling")
+        style_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        res_grid = ttk.Frame(res_frame)
-        res_grid.pack(fill=tk.X, padx=10, pady=5)
-        
-        ttk.Label(res_grid, text="X Resolution:").grid(row=0, column=0, sticky='w')
-        ttk.Spinbox(res_grid, from_=10, to=200, textvariable=self.surface_settings['x_resolution'],
-                   width=10, command=self._on_advanced_change).grid(row=0, column=1, padx=5)
-        
-        ttk.Label(res_grid, text="Y Resolution:").grid(row=1, column=0, sticky='w', pady=(5, 0))
-        ttk.Spinbox(res_grid, from_=10, to=200, textvariable=self.surface_settings['y_resolution'],
-                   width=10, command=self._on_advanced_change).grid(row=1, column=1, padx=5, pady=(5, 0))
-        
-        # Appearance controls
-        appearance_frame = ttk.LabelFrame(parent, text="Surface Appearance")
-        appearance_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Label(appearance_frame, text="Colormap:").pack(anchor='w', padx=10, pady=2)
-        colormap_combo = ttk.Combobox(appearance_frame, textvariable=self.surface_settings['colormap'],
-                                     values=['viridis', 'plasma', 'inferno', 'magma', 'coolwarm', 
-                                            'RdYlBu', 'seismic', 'terrain'], state="readonly")
-        colormap_combo.pack(fill=tk.X, padx=10, pady=2)
-        colormap_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
-        
-        ttk.Label(appearance_frame, text="Surface Alpha:").pack(anchor='w', padx=10, pady=2)
-        ttk.Scale(appearance_frame, from_=0.0, to=1.0, variable=self.surface_settings['alpha'],
+        ttk.Label(style_frame, text="Point Size:").pack(anchor='w', padx=10, pady=2)
+        ttk.Scale(style_frame, from_=10, to=200, variable=self.diagnostic_settings['point_size'],
                  orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
         
-        # View angle controls
-        view_frame = ttk.LabelFrame(parent, text="View Angle")
-        view_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(style_frame, text="Point Color:").pack(anchor='w', padx=10, pady=2)
+        color_combo = ttk.Combobox(style_frame, textvariable=self.diagnostic_settings['point_color'],
+                                  values=['blue', 'red', 'green', 'orange', 'purple', 'black'], state="readonly")
+        color_combo.pack(fill=tk.X, padx=10, pady=2)
+        color_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
         
-        ttk.Label(view_frame, text="Elevation:").pack(anchor='w', padx=10, pady=2)
-        ttk.Scale(view_frame, from_=-90, to=90, variable=self.surface_settings['elevation'],
-                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
+        # Reference Line Settings
+        ref_frame = ttk.LabelFrame(parent, text="Reference Line Settings")
+        ref_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Label(view_frame, text="Azimuth:").pack(anchor='w', padx=10, pady=2)
-        ttk.Scale(view_frame, from_=0, to=360, variable=self.surface_settings['azimuth'],
-                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
+        ttk.Label(ref_frame, text="Line Style:").pack(anchor='w', padx=10, pady=2)
+        style_combo = ttk.Combobox(ref_frame, textvariable=self.diagnostic_settings['reference_line_style'],
+                                  values=['solid', 'dashed', 'dotted', 'dashdot'], state="readonly")
+        style_combo.pack(fill=tk.X, padx=10, pady=2)
+        style_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
         
-        # Lighting controls
-        lighting_frame = ttk.LabelFrame(parent, text="Lighting & Shading")
-        lighting_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(ref_frame, text="Line Color:").pack(anchor='w', padx=10, pady=2)
+        ref_color_combo = ttk.Combobox(ref_frame, textvariable=self.diagnostic_settings['reference_line_color'],
+                                      values=['red', 'black', 'blue', 'green'], state="readonly")
+        ref_color_combo.pack(fill=tk.X, padx=10, pady=2)
+        ref_color_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
         
-        ttk.Checkbutton(lighting_frame, text="Enable Lighting", 
-                       variable=self.surface_settings['lighting_enabled'],
+        # Statistics Settings
+        stats_frame = ttk.LabelFrame(parent, text="Statistics Display")
+        stats_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(stats_frame, text="Position:").pack(anchor='w', padx=10, pady=2)
+        pos_combo = ttk.Combobox(stats_frame, textvariable=self.diagnostic_settings['stats_position'],
+                                values=['upper_left', 'upper_right', 'lower_left', 'lower_right'], state="readonly")
+        pos_combo.pack(fill=tk.X, padx=10, pady=2)
+        pos_combo.bind('<<ComboboxSelected>>', self._on_advanced_change)
+        
+        ttk.Checkbutton(stats_frame, text="Show RMSE", 
+                       variable=self.diagnostic_settings['show_rmse'],
                        command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
-        ttk.Checkbutton(lighting_frame, text="Enable Shading", 
-                       variable=self.surface_settings['shade'],
+        
+        ttk.Checkbutton(stats_frame, text="Show MAE", 
+                       variable=self.diagnostic_settings['show_mae'],
                        command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
+        
+        ttk.Checkbutton(stats_frame, text="Show R²", 
+                       variable=self.diagnostic_settings['show_r2'],
+                       command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
+        
+        # Feature Importance Settings (shown only for feature importance)
+        self.importance_frame = ttk.LabelFrame(parent, text="Feature Importance Settings")
+        
+        ttk.Label(self.importance_frame, text="Importance Threshold:").pack(anchor='w', padx=10, pady=2)
+        ttk.Scale(self.importance_frame, from_=0.001, to=0.1, variable=self.diagnostic_settings['importance_threshold'],
+                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
+        
+        ttk.Label(self.importance_frame, text="Max Features to Show:").pack(anchor='w', padx=10, pady=2)
+        ttk.Spinbox(self.importance_frame, from_=5, to=20, textvariable=self.diagnostic_settings['max_features'],
+                   width=10, command=self._on_advanced_change).pack(anchor='w', padx=10, pady=2)
+        
+        # Uncertainty Settings (shown only for uncertainty)
+        self.uncertainty_frame = ttk.LabelFrame(parent, text="Uncertainty Settings")
+        
+        ttk.Label(self.uncertainty_frame, text="Confidence Level:").pack(anchor='w', padx=10, pady=2)
+        ttk.Scale(self.uncertainty_frame, from_=0.8, to=0.99, variable=self.diagnostic_settings['confidence_level'],
+                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
+        
+        ttk.Label(self.uncertainty_frame, text="Band Transparency:").pack(anchor='w', padx=10, pady=2)
+        ttk.Scale(self.uncertainty_frame, from_=0.1, to=0.8, variable=self.diagnostic_settings['uncertainty_alpha'],
+                 orient=tk.HORIZONTAL, command=self._on_advanced_change).pack(fill=tk.X, padx=10, pady=2)
     
     def _toggle_advanced_controls(self):
         """Toggle visibility of advanced controls"""
         if self.advanced_expanded_var.get():
             self.advanced_controls_frame.pack(fill=tk.X, padx=10, pady=5)
+            self._update_controls_visibility()
         else:
             self.advanced_controls_frame.pack_forget()
+    
+    def _update_controls_visibility(self):
+        """Update visibility of controls based on selected diagnostic type"""
+        diagnostic_type = self.diagnostic_type_var.get()
+        
+        # Show/hide uncertainty checkbox based on diagnostic type
+        if diagnostic_type == "uncertainty":
+            self.uncertainty_checkbox.pack(anchor='w', padx=10, pady=5)
+        else:
+            self.uncertainty_checkbox.pack_forget()
+        
+        # Show/hide advanced controls sections based on diagnostic type
+        if hasattr(self, 'importance_frame') and hasattr(self, 'uncertainty_frame'):
+            if diagnostic_type == "feature_importance":
+                self.importance_frame.pack(fill=tk.X, padx=5, pady=5)
+                self.uncertainty_frame.pack_forget()
+            elif diagnostic_type == "uncertainty":
+                self.uncertainty_frame.pack(fill=tk.X, padx=5, pady=5)
+                self.importance_frame.pack_forget()
+            else:
+                self.importance_frame.pack_forget()
+                self.uncertainty_frame.pack_forget()
     
     def _create_axis_controls(self, parent):
         """Create axis range controls"""
@@ -347,28 +388,11 @@ class Surface3DControlPanel:
         y_max_entry.grid(row=0, column=3)
         y_max_entry.bind('<KeyRelease>', self._on_axis_change)
         
-        # Z-axis section
-        z_frame = ttk.LabelFrame(parent, text="Z-Axis Range")
-        z_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        z_controls = ttk.Frame(z_frame)
-        z_controls.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Label(z_controls, text="Min:").grid(row=0, column=0, sticky='w', padx=(0, 5))
-        z_min_entry = ttk.Entry(z_controls, textvariable=self.axis_ranges['z_min']['var'], width=12)
-        z_min_entry.grid(row=0, column=1, padx=(0, 10))  
-        z_min_entry.bind('<KeyRelease>', self._on_axis_change)
-        
-        ttk.Label(z_controls, text="Max:").grid(row=0, column=2, sticky='w', padx=(0, 5))
-        z_max_entry = ttk.Entry(z_controls, textvariable=self.axis_ranges['z_max']['var'], width=12)
-        z_max_entry.grid(row=0, column=3)
-        z_max_entry.bind('<KeyRelease>', self._on_axis_change)
-        
         # Auto scale button
         auto_frame = ttk.Frame(parent)
         auto_frame.pack(pady=10)
         
-        auto_button = ttk.Button(auto_frame, text="🔄 Auto Scale All Axes", 
+        auto_button = ttk.Button(auto_frame, text="🔄 Auto Scale Both Axes", 
                                 command=self._auto_scale, style='Accent.TButton')
         auto_button.pack()
     
@@ -406,13 +430,17 @@ class Surface3DControlPanel:
         close_button = ttk.Button(button_frame, text="✖ Close", command=self.hide)
         close_button.pack(side=tk.RIGHT)
     
+    def _on_diagnostic_change(self):
+        """Handle diagnostic type change"""
+        self._update_controls_visibility()
+        self._update_plot()
+    
+    def _on_response_change(self, event=None):
+        """Handle response selection change"""
+        self._update_plot()
+    
     def _on_display_change(self):
         """Handle display option change"""
-        # Ensure at least the surface is shown for a meaningful plot
-        if not self.show_surface_var.get() and not self.show_wireframe_var.get() and not self.show_contours_var.get():
-            # If user unchecked everything, keep at least surface
-            self.show_surface_var.set(True)
-        
         self._update_plot()
     
     def _on_advanced_change(self, event=None):
@@ -422,7 +450,7 @@ class Surface3DControlPanel:
     def _on_axis_change(self, event=None):
         """Handle axis range change"""
         # Parse the ranges and update
-        for axis in ['x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']:
+        for axis in ['x_min', 'x_max', 'y_min', 'y_max']:
             value = self.axis_ranges[axis]['var'].get().strip()
             if value.lower() == 'auto' or value == '':
                 self.axis_ranges[axis]['auto'] = True
@@ -439,7 +467,7 @@ class Surface3DControlPanel:
     
     def _auto_scale(self):
         """Reset to auto scaling"""
-        for axis in ['x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']:
+        for axis in ['x_min', 'x_max', 'y_min', 'y_max']:
             self.axis_ranges[axis]['var'].set('auto')
             self.axis_ranges[axis]['auto'] = True
         self._update_plot()
@@ -480,12 +508,10 @@ class Surface3DControlPanel:
         # X-axis range - get values and determine if auto
         x_min_val, x_max_val, x_auto = self._get_axis_value('x_min')
         y_min_val, y_max_val, y_auto = self._get_axis_value('y_min')
-        z_min_val, z_max_val, z_auto = self._get_axis_value('z_min')
         
         # Format for main GUI expectation: (min_val, max_val, is_auto)
         ranges['x_axis'] = (x_min_val, x_max_val, x_auto)
         ranges['y_axis'] = (y_min_val, y_max_val, y_auto)
-        ranges['z_axis'] = (z_min_val, z_max_val, z_auto)
         
         return ranges
     
@@ -513,17 +539,23 @@ class Surface3DControlPanel:
     def get_display_options(self):
         """Get the current display options"""
         return {
-            'show_surface': self.show_surface_var.get(),
-            'show_wireframe': self.show_wireframe_var.get(),
-            'show_contours': self.show_contours_var.get(),
             'show_data_points': self.show_data_points_var.get(),
-            'show_colorbar': self.show_colorbar_var.get()
+            'show_reference_line': self.show_reference_line_var.get(),
+            'show_statistics': self.show_statistics_var.get(),
+            'show_uncertainty_bands': self.show_uncertainty_bands_var.get()
         }
     
-    def get_surface_settings(self):
-        """Get all current 3D surface settings"""
+    def get_diagnostic_settings(self):
+        """Get the current diagnostic type and response"""
+        return {
+            'diagnostic_type': self.diagnostic_type_var.get(),
+            'response_name': self.response_var.get()
+        }
+    
+    def get_advanced_settings(self):
+        """Get all current advanced diagnostic settings"""
         settings = {}
-        for key, var in self.surface_settings.items():
+        for key, var in self.diagnostic_settings.items():
             try:
                 settings[key] = var.get()
             except:
@@ -535,10 +567,10 @@ class Surface3DControlPanel:
         return settings
 
 
-def create_surface_3d_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 
-                                   responses_config: Dict[str, Any] = None, update_callback: Callable = None) -> Surface3DControlPanel:
-    """Factory function to create a 3D surface control panel"""
-    logger.info(f"Creating specialized 3D surface control panel for {plot_type}")
-    control_panel = Surface3DControlPanel(parent, plot_type, params_config, responses_config, update_callback)
+def create_model_diagnostics_control_panel(parent, plot_type: str, params_config: Dict[str, Any] = None, 
+                                          responses_config: Dict[str, Any] = None, update_callback: Callable = None) -> ModelDiagnosticsControlPanel:
+    """Factory function to create a Model Diagnostics control panel"""
+    logger.info(f"Creating specialized Model Diagnostics control panel for {plot_type}")
+    control_panel = ModelDiagnosticsControlPanel(parent, plot_type, params_config, responses_config, update_callback)
     control_panel.create_window()
     return control_panel
