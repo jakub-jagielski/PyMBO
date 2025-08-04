@@ -29,9 +29,7 @@ from tkinter import messagebox
 from typing import List, Tuple, Dict, Any
 import warnings
 
-# Configure matplotlib backend before any plotting imports
-import matplotlib
-matplotlib.use("TkAgg")
+# matplotlib will be imported after dependency check
 
 # Configuration constants
 APP_NAME = "PyMBO - Python Multi-objective Bayesian Optimization"
@@ -304,6 +302,10 @@ def main() -> int:
             logger.error(f"Missing dependencies: {missing_deps}")
             show_dependency_error(missing_deps)
             return 1
+
+        # Configure matplotlib backend after dependency check
+        import matplotlib
+        matplotlib.use("TkAgg")
 
         logger.info("All dependencies available for enhanced features")
         logger.info(f"Available: {available_deps}")
