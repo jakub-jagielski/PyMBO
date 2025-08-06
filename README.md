@@ -1,194 +1,184 @@
-# 🚀 PyMBO - Python Multi-objective Bayesian Optimization
+# PyMBO: Python Multi-objective Bayesian Optimization
 
-[![PyPI version](https://badge.fury.io/py/pymbo.svg)](https://pypi.org/project/pymbo/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
-[![GitHub stars](https://img.shields.io/github/stars/jakub-jagielski/pymbo)](https://github.com/jakub-jagielski/pymbo/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-3.2.0-green.svg)](https://github.com/jakub-jagielski/pymbo)
 
-> **A comprehensive multi-objective Bayesian optimization framework with advanced visualization and screening capabilities.**
+PyMBO is a comprehensive framework for multi-objective Bayesian optimization that combines advanced algorithms with intuitive visualization capabilities. The framework is designed for researchers and practitioners working with complex optimization problems involving multiple objectives and high-dimensional parameter spaces.
 
-Transform your optimization challenges with PyMBO's intuitive GUI, powerful algorithms, and real-time visualizations. Perfect for researchers, engineers, and data scientists working with complex parameter spaces.
+## Features
 
----
+### Core Optimization
+- **Multi-objective Bayesian optimization** using PyTorch and BoTorch backends
+- **Hybrid sequential/parallel execution** with automatic mode detection
+- **Multiple acquisition functions** including Expected Hypervolume Improvement (EHVI)
+- **Support for mixed parameter types** (continuous, discrete, categorical)
 
-## ✨ Key Features
+### Screening and Analysis
+- **SGLBO (Stochastic Gradient Line Bayesian Optimization)** for efficient parameter space exploration
+- **Parameter importance analysis** with correlation matrices
+- **Real-time visualization** of acquisition functions and optimization progress
+- **Comprehensive benchmarking** tools for algorithm comparison
 
-| Feature | Description |
-|---------|-------------|
-| 🎯 **Multi-objective Optimization** | Advanced Bayesian optimization with PyTorch/BoTorch backend |
-| 📊 **Real-time Visualizations** | Interactive acquisition function heatmaps and 3D surfaces |
-| 🔍 **SGLBO Screening** | Efficient parameter space exploration before detailed optimization |
-| 🎮 **Interactive GUI** | User-friendly interface with drag-and-drop controls |
-| 📈 **Comprehensive Analytics** | Parameter importance, correlation analysis, and trend visualization |
-| 💾 **Export & Reporting** | Generate detailed reports in multiple formats |
-| 🔬 **Scientific Utilities** | Built-in validation and analysis tools |
+### Interface and Usability
+- **Graphical user interface** with interactive controls
+- **Programmatic API** for integration into existing workflows
+- **Export capabilities** for results and visualizations
+- **Extensive documentation** and examples
 
-## 🚀 Quick Start
+## Installation
 
-### Installation (Recommended)
-
+### From PyPI (Recommended)
 ```bash
 pip install pymbo
 ```
 
-### Run the Application
-
-```bash
-python -m pymbo
-```
-
-**That's it!** 🎉 PyMBO will launch with a modern GUI ready for your optimization projects.
-
-### Alternative Installation
-
-If you prefer to install from source:
-
+### From Source
 ```bash
 git clone https://github.com/jakub-jagielski/pymbo.git
 cd pymbo
 pip install -r requirements.txt
-python main.py
 ```
 
-## 🎮 How to Use PyMBO
+## Quick Start
 
-### 🖥️ **Graphical Interface**
-Launch the GUI and follow these simple steps:
-
-1. **🔧 Configure Parameters** - Define your optimization variables (continuous, discrete, categorical)
-2. **🎯 Set Objectives** - Specify what you want to optimize (maximize, minimize, or target values)  
-3. **▶️ Run Optimization** - Watch real-time visualizations as PyMBO finds optimal solutions
-4. **📊 Analyze Results** - Export detailed reports and generate publication-ready plots
-
-### 🔬 **SGLBO Screening Module**
-For complex parameter spaces, start with efficient screening:
-
+### Graphical Interface
+Launch the application with:
 ```bash
-python -m pymbo  # Launch GUI → Select "SGLBO Screening"
+python -m pymbo
 ```
 
-**Screening Features:**
-- 📈 **Response Trends Over Time** - Track optimization progress
-- 📊 **Parameter Importance Analysis** - Identify key variables  
-- 🔄 **Correlation Matrix** - Understand parameter interactions
-- 🎯 **Design Space Generation** - Create focused regions for detailed optimization
-
-### 💻 **Programmatic Usage** 
-
+### Programmatic Usage
 ```python
 from pymbo import EnhancedMultiObjectiveOptimizer, SimpleController
 
-# Create optimizer instance
+# Define optimization problem
 optimizer = EnhancedMultiObjectiveOptimizer(
-    bounds=[(0, 10), (0, 10)],
-    objectives=['maximize']
+    bounds=[(0, 10), (0, 10)],  # Parameter bounds
+    objectives=['maximize']      # Optimization direction
 )
 
-# Run optimization
+# Initialize controller and run optimization
 controller = SimpleController(optimizer)
-controller.run_optimization()
+results = controller.run_optimization()
 ```
 
-## 🏗️ Architecture
+### Parallel Optimization
+```python
+from pymbo.core.controller import SimpleController
 
-PyMBO is built with a modular architecture for maximum flexibility:
+controller = SimpleController()
 
+# Benchmark multiple strategies
+benchmark_results = controller.benchmark_optimization_strategies(
+    strategies=['ehvi', 'ei', 'random'],
+    n_suggestions=10,
+    parallel=True
+)
+
+# What-if analysis
+scenarios = [
+    {'name': 'conservative', 'n_suggestions': 5},
+    {'name': 'aggressive', 'n_suggestions': 15}
+]
+what_if_results = controller.run_what_if_analysis(
+    scenarios=scenarios, 
+    parallel=True
+)
 ```
-pymbo/
-├── 🧠 core/          # Optimization algorithms and controllers
-├── 🎮 gui/           # Interactive graphical interface
-├── 🔍 screening/     # SGLBO screening module  
-└── 🛠️ utils/         # Plotting, reporting, and scientific utilities
-```
 
-### 🔍 **Advanced Screening (SGLBO)**
+## SGLBO Screening Module
 
-The **Stochastic Gradient Line Bayesian Optimization** module revolutionizes parameter space exploration:
-
-**Why Use SGLBO Screening?**
-- ⚡ **10x Faster** initial exploration vs. full Bayesian optimization  
-- 🎯 **Smart Parameter Selection** - Focus on variables that matter most
-- 📊 **Rich Visualizations** - 4 different plot types for comprehensive analysis
-- 🔄 **Seamless Integration** - Export results directly to main optimization
+For complex parameter spaces, PyMBO includes a specialized screening module that provides efficient initial exploration:
 
 ```python
 from pymbo.screening import ScreeningOptimizer
 
-# Quick screening setup
 optimizer = ScreeningOptimizer(
-    params_config=config["parameters"],
-    responses_config=config["responses"]
+    params_config=parameters_configuration,
+    responses_config=responses_configuration
 )
 
-# Get results with built-in analysis
 results = optimizer.run_screening()
 ```
 
-## 🎓 Academic Use & Licensing
+The screening module provides:
+- Parameter sensitivity analysis
+- Response surface approximation  
+- Design space reduction
+- Seamless integration with main optimization
 
-### 📜 **License**: Creative Commons BY-NC-ND 4.0
+## Architecture
 
-PyMBO is **free for academic and research use**! 
+```
+pymbo/
+├── core/           # Optimization algorithms and controllers
+│   ├── optimizer.py      # Core optimization implementation
+│   ├── controller.py     # Optimization control and orchestration
+│   └── orchestrator.py   # Parallel execution management
+├── gui/            # Graphical user interface components
+├── screening/      # SGLBO screening optimization
+├── utils/          # Utilities for plotting and analysis
+└── ...
+```
 
-✅ **Permitted:**
-- Academic research projects
-- Publishing results in journals, theses, conferences  
-- Educational use in universities
-- Non-commercial research applications
+The framework uses a modular design that separates:
+- **Optimization algorithms** (core module)
+- **User interfaces** (GUI and programmatic API)  
+- **Analysis tools** (screening and utilities)
+- **Visualization** (integrated plotting and export)
 
-❌ **Not Permitted:**
-- Commercial applications without license
-- Redistribution of modified versions
+## Performance Characteristics
 
-> 📖 **For Researchers**: You can freely use PyMBO in your research and publish your findings. We encourage academic use!
+PyMBO's hybrid architecture provides:
+- **Automatic parallelization** for embarrassingly parallel tasks
+- **Sequential execution** for interactive optimization
+- **Memory-efficient** handling of large parameter spaces
+- **GPU acceleration** support where applicable
 
-## 📚 How to Cite
+Typical performance improvements:
+- 2-10x speedup for strategy benchmarking
+- 3-8x faster data loading for large datasets
+- Efficient memory usage for high-dimensional problems
 
-If PyMBO helps your research, please cite it:
+## Documentation and Examples
+
+The framework includes comprehensive documentation covering:
+- Algorithm implementation details
+- User interface guides
+- API reference
+- Performance benchmarks
+- Integration examples
+
+## Contributing
+
+We welcome contributions from the research community. To contribute:
+
+1. Fork the repository
+2. Create a feature branch
+3. Implement your changes with appropriate tests
+4. Submit a pull request with a clear description
+
+Please ensure that contributions maintain code quality and include appropriate documentation.
+
+## Citation
+
+If you use PyMBO in your research, please cite:
 
 ```bibtex
 @software{jagielski2025pymbo,
   author = {Jakub Jagielski},
   title = {PyMBO: A Python library for multivariate Bayesian optimization and stochastic Bayesian screening},
-  version = {3.1.2},
+  version = {3.2.0},
   year = {2025},
   url = {https://github.com/jakub-jagielski/pymbo}
 }
 ```
 
-## 🤝 Contributing
+## License
 
-We welcome contributions! Here's how to get started:
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-1. 🍴 **Fork** the repository
-2. 🌿 **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. 💻 **Make** your changes  
-4. ✅ **Add** tests if applicable
-5. 📝 **Commit** changes (`git commit -m 'Add amazing feature'`)
-6. 📤 **Push** to branch (`git push origin feature/amazing-feature`)
-7. 🔄 **Open** a Pull Request
+## Support
 
-### 🐛 **Found a Bug?**
-[Open an issue](https://github.com/jakub-jagielski/pymbo/issues) with:
-- Clear description of the problem
-- Steps to reproduce  
-- Expected vs actual behavior
-- System information (OS, Python version)
-
-## ⭐ **Show Your Support**
-
-If PyMBO helps your work, please:
-- ⭐ **Star** this repository
-- 🐦 **Share** with your colleagues  
-- 📝 **Cite** in your publications
-- 🤝 **Contribute** improvements
-
----
-
-<div align="center">
-
-**Made with ❤️ for the optimization community**
-
-[⬆️ Back to Top](#-pymbo---python-multi-objective-bayesian-optimization)
-
-</div>
+For questions, bug reports, or feature requests, please use the [GitHub Issues](https://github.com/jakub-jagielski/pymbo/issues) system.

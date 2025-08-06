@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymbo"
-version = "3.1.5"
+version = "3.2.0"
 authors = [
     {name = "Jakub Jagielski", email = "jakub.jagielski@example.com"},
 ]
@@ -94,4 +94,4 @@ extend-exclude = '''
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-addopts = "--cov=pymbo --cov-report=term-missing"
+addopts = "-v"

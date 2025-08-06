@@ -1,7 +1,7 @@
 """
 PyMBO - Python Multi-objective Bayesian Optimization Main Application
 
-This is the main entry point for PyMBO v3.2.0.
+This is the main entry point for PyMBO v3.1.2.
 It provides advanced Bayesian optimization with acquisition function visualization,
 enhanced plotting capabilities, and flexible control panel interfaces.
 
@@ -29,7 +29,9 @@ from tkinter import messagebox
 from typing import List, Tuple, Dict, Any
 import warnings
 
-# matplotlib will be imported after dependency check
+# Configure matplotlib backend before any plotting imports
+import matplotlib
+matplotlib.use("TkAgg")
 
 # Configuration constants
 APP_NAME = "PyMBO - Python Multi-objective Bayesian Optimization"
@@ -224,7 +226,7 @@ def test_enhanced_components() -> bool:
 
     try:
         # Test enhanced optimizer import
-        from pymbo.core.optimizer import EnhancedMultiObjectiveOptimizer
+        from .core.optimizer import EnhancedMultiObjectiveOptimizer
         import pandas as pd
 
         # Create test configuration
@@ -303,10 +305,6 @@ def main() -> int:
             show_dependency_error(missing_deps)
             return 1
 
-        # Configure matplotlib backend after dependency check
-        import matplotlib
-        matplotlib.use("TkAgg")
-
         logger.info("All dependencies available for enhanced features")
         logger.info(f"Available: {available_deps}")
 
@@ -318,34 +316,18 @@ def main() -> int:
         # Import enhanced application components
         logger.info("Importing enhanced application components...")
         
-        # Import and apply modern GUI theme
-        try:
-            from pymbo.gui.enhanced_gui_theme import enhance_matplotlib_plots
-            from pymbo.gui.tkinter_theme_integration import apply_modern_tkinter_theme
-            logger.info("✓ Modern GUI theme imported successfully")
-            
-            # Apply matplotlib enhancements
-            enhance_matplotlib_plots()
-            logger.info("✓ Matplotlib styling enhanced")
-        except ImportError as theme_e:
-            logger.warning(f"Modern GUI theme unavailable: {theme_e}")
-            apply_modern_tkinter_theme = None
-        except Exception as theme_e:
-            logger.warning(f"Failed to import GUI theme enhancements: {theme_e}")
-            apply_modern_tkinter_theme = None
-        
         app_modules = {}
         try:
             # Import core modules
-            from pymbo.gui.gui import SimpleOptimizerApp
-            from pymbo.core.controller import SimpleController
+            from .gui.gui import SimpleOptimizerApp
+            from .core.controller import SimpleController
             
             app_modules['gui'] = SimpleOptimizerApp
             app_modules['controller'] = SimpleController
             
             # Try to import enhanced plotting
             try:
-                from pymbo.utils.plotting import SimplePlotManager
+                from .utils.plotting import SimplePlotManager
                 app_modules['plotting'] = SimplePlotManager
                 logger.info("✓ Enhanced modules with plotting imported successfully")
                 logger.info("✓ Acquisition function visualization available")
@@ -385,14 +367,6 @@ Technical details:
             
             logger.info("Application components initialized successfully")
             
-            # Apply modern theme to the application
-            if apply_modern_tkinter_theme is not None:
-                try:
-                    apply_modern_tkinter_theme(app)
-                    logger.info("✓ Modern Tkinter theme applied to application")
-                except Exception as theme_apply_e:
-                    logger.warning(f"Failed to apply Tkinter theme: {theme_apply_e}")
-            
             # Configure application window
             app.title(f"{APP_NAME} v{APP_VERSION}")
             app.set_status("Application ready")
@@ -427,7 +401,28 @@ Technical details:
 
         logger.info("Starting main application loop...")
         
-        # Startup message removed for cleaner user experience
+        # Show startup message about new features (optional)
+        try:
+            if 'plotting' in app_modules:  # Only show if enhanced features available
+                startup_msg = f"""🎆 Enhanced Features Available!
+
+{APP_NAME} v{APP_VERSION} includes:
+
+• Acquisition Function Heatmap - visualize optimization sampling strategy
+• Enhanced plotting with improved parameter space visualization  
+• Interactive control panels with fixed aspect ratios
+• Real-time Bayesian optimization with PyTorch/BoTorch
+• Multi-objective optimization support
+
+📊 The Acquisition Function tab shows where the optimizer
+will most likely suggest new experiments.
+
+🔧 Control panels maintain aspect ratios for better visualization."""
+                
+                messagebox.showinfo("Enhanced Laboratory Ready", startup_msg)
+        except Exception as msg_e:
+            logger.debug(f"Startup message failed: {msg_e}")
+            # Don't fail application if message box doesn't work
 
         # Start main application loop
         try:

@@ -1,5 +1,33 @@
 # PyMBO Changelog
 
+## [3.1.5] - 2025-08-06
+
+### Added
+- **Comprehensive Directory Reorganization**: Complete project structure overhaul for better maintainability
+  - `tests/`: Organized test suite with category-based structure (core, gpu, gui, performance, integration, validation, debug)
+  - `scripts/`: Standalone utility scripts for GPU acceleration, BLAS optimization, and system integration
+  - `examples/`: Usage examples and implementation demonstrations
+  - `docs/`: Structured documentation with manuals, reports, and summaries
+- **Advanced Test Runner**: `tests/run_all_tests.py` with category-specific execution and comprehensive reporting
+- **Improved Documentation**: Updated README.md with new architecture overview and development guidelines
+- **Better Import Management**: Fixed import paths after file reorganization to maintain functionality
+
+### Changed
+- **File Organization**: Moved 60+ test files from root directory to organized `tests/` subdirectories
+- **Script Organization**: Relocated standalone scripts to dedicated `scripts/` directory
+- **Documentation Structure**: Organized all documentation files into logical `docs/` hierarchy
+- **Import Path Updates**: Updated import statements in core modules to reflect new file locations
+
+### Fixed
+- **Import Path Issues**: Corrected relative imports in `benchmark_algorithms.py` and GPU integration scripts
+- **File Naming Consistency**: Improved file organization and naming conventions throughout the project
+- **Module Accessibility**: Ensured all moved files remain accessible with proper `__init__.py` files
+
+### Removed
+- **Root Directory Clutter**: Removed 60+ scattered test files, scripts, and documentation from project root
+- **Redundant Files**: Cleaned up duplicate scripts and outdated implementation files
+- **Development Artifacts**: Removed temporary files and development leftovers
+
 ## [3.1.4] - 2025-07-30
 
 ### Added
