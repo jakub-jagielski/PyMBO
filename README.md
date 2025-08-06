@@ -175,6 +175,10 @@ If you use PyMBO in your research, please cite:
 }
 ```
 
+## Development
+
+PyMBO was developed with the assistance of [Anthropic's Claude Code](https://docs.anthropic.com/en/docs/claude-code), an AI-powered development tool that enhanced the implementation of optimization algorithms, GUI components, and documentation.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
