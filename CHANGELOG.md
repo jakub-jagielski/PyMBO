@@ -1,6 +1,45 @@
 # PyMBO Changelog
 
-## [3.1.5] - 2025-08-06
+## [3.6.6] - 2025-08-19
+
+### Fixed
+- **CRITICAL: Target Goals Academic Compliance**: Fixed incorrect Target goal implementation
+  - Target goals now properly implemented as deviation minimization objectives (academic standard)
+  - Previously incorrectly treated as equality constraints, which violated goal programming theory
+  - Target deviations (e.g., `|temperature - 500°C|`) now integrated into multi-objective optimization
+  - Enables proper trade-offs between response optimization and target parameter achievement
+  - Range goals remain correctly implemented as constraints for safety bounds
+  - Full academic compliance with Bayesian optimization and goal programming standards
+
+### Enhanced
+- **Target-Response Trade-off Optimization**: Target parameters now participate in Pareto front exploration
+  - qNEHVI acquisition function properly balances response optimization with target achievement
+  - Academic-standard formulation: `minimize |param - target|` instead of constraint `|param - target| ≤ ε`
+  - Supports weighted target deviations for prioritization
+  - Maintains backward compatibility with existing parameter configurations
+
+## [3.6.3] - 2025-08-14
+
+### Added
+- **Target and Range Parameter Constraints**: Advanced constraint handling for parameter optimization
+  - Target constraints: Keep parameters at specific values with tolerance (e.g., temperature = 500°C ± 5°C)
+  - Range constraints: Restrict parameters to safe operating ranges (e.g., pressure: 2-8 bar)
+  - Academic-standard constraint formulation and validation
+  - Integration with BoTorch's constrained optimization algorithms
+
+### Fixed
+- **Pareto Plot Objective Detection**: Fixed issue where constraint goals were incorrectly treated as optimization objectives
+  - Separated constraint goals (Target/Range) from optimization objectives (Maximize/Minimize)
+  - Updated GUI objective detection logic for proper Pareto plot functionality
+  - Consistent objective handling across all plotting controls
+
+### Enhanced
+- **Academic Standards Compliance**: All constraint implementations follow established optimization practices
+  - Proper constraint normalization to unit cube space
+  - Robust constraint validation and enforcement mechanisms
+  - Comprehensive constraint satisfaction checking and logging
+
+## [3.6.2] - 2025-08-09
 
 ### Added
 - **Comprehensive Directory Reorganization**: Complete project structure overhaul for better maintainability
