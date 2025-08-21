@@ -389,7 +389,21 @@ PyMBO bridges the gap between cutting-edge academic research and practical optim
 
 **🎓 Academic Excellence** • **🔬 Research Innovation** • **🤝 Community Collaboration**
 
+</div>
+
 ---
+
+### 🤖 **Development Philosophy & AI Collaboration**
+
+**Transparent Development**: PyMBO represents a collaborative approach to scientific software development. While significant portions of the implementation were developed with assistance from Claude Code (Anthropic's AI), this was far from a simple automated process. The development required extensive domain expertise in Bayesian optimization, multi-objective optimization theory, and advanced kernel methods to properly guide the AI, validate mathematical implementations, and ensure scientific rigor.
+
+**Human-AI Partnership**: The core algorithms, mathematical foundations, and research applications reflect deep understanding of optimization theory combined with AI-assisted implementation. Every algorithmic decision was informed by peer-reviewed literature, and all implementations underwent rigorous validation against established benchmarks.
+
+**Academic Integrity**: This collaborative development model demonstrates how AI can accelerate scientific software development when guided by domain expertise, while maintaining the theoretical rigor and practical utility essential for academic research applications.
+
+---
+
+<div align="center">
 
 ⭐ **Star this repository** if PyMBO advances your research  
 📝 **Cite PyMBO** in your publications  
