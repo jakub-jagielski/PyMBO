@@ -22,7 +22,7 @@ Functions:
     create_3d_surface_control_panel: Factory function for control panel instantiation
 
 Author: PyMBO Development Team
-Version: 4.0.0 Enhanced
+Version: 3.6.6 Enhanced
 """
 
 import tkinter as tk
@@ -184,9 +184,9 @@ class SurfacePlotControlPanel:
             if param_config.get("bounds"):  # Only parameters with bounds can be varied
                 self.available_parameters.append(param_name)
         
-        # Extract response names
+        # Extract response names - only optimization objectives, not constraints
         for response_name, response_config in self.responses_config.items():
-            if response_config.get("goal") in ["Maximize", "Minimize", "Target"]:
+            if response_config.get("goal") in ["Maximize", "Minimize"]:
                 self.available_responses.append(response_name)
         
         # Set default selections
@@ -616,189 +616,15 @@ class SurfacePlotControlPanel:
     
     def _create_acquisition_controls(self) -> None:
         """
-        Create enhanced controls specific to acquisition function surface mode.
+        Set up acquisition function mode with no additional controls.
+        Uses qNEHVI acquisition function automatically.
         """
         # Clear any existing dynamic controls
         for widget in self.dynamic_controls_container.winfo_children():
             widget.destroy()
         
-        # Acquisition function controls section
-        acquisition_section = tk.LabelFrame(
-            self.dynamic_controls_container,
-            text="Acquisition Function Settings",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=10
-        )
-        acquisition_section.pack(fill=tk.X, pady=5)
-        
-        # Description
-        acq_desc_label = tk.Label(
-            acquisition_section,
-            text="Surface: A(x) = Expected Improvement at point x\nShows where the algorithm is most likely to sample next.",
-            bg=COLOR_SURFACE,
-            fg=COLOR_PRIMARY,
-            font=("Arial", 9, "bold"),
-            justify=tk.CENTER
-        )
-        acq_desc_label.pack(pady=(0, 10))
-        
-        # Acquisition function type selection
-        acq_type_frame = tk.Frame(acquisition_section, bg=COLOR_SURFACE)
-        acq_type_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(
-            acq_type_frame,
-            text="Acquisition Function:",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 9, "bold")
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.acquisition_type_var = tk.StringVar(value="EHVI")
-        acq_types = ["EHVI", "EI", "UCB", "PI", "qEI"]
-        
-        self.acq_type_combo = ttk.Combobox(
-            acq_type_frame,
-            textvariable=self.acquisition_type_var,
-            values=acq_types,
-            state="readonly",
-            width=15
-        )
-        self.acq_type_combo.pack(side=tk.LEFT)
-        
-        # Acquisition function descriptions
-        acq_descriptions = {
-            "EHVI": "Expected Hypervolume Improvement (multi-objective)",
-            "EI": "Expected Improvement (single objective)",
-            "UCB": "Upper Confidence Bound (exploration vs exploitation)",
-            "PI": "Probability of Improvement",
-            "qEI": "Batch Expected Improvement (parallel points)"
-        }
-        
-        self.acq_desc_var_label = tk.Label(
-            acquisition_section,
-            text=acq_descriptions["EHVI"],
-            bg=COLOR_SURFACE,
-            fg=COLOR_WARNING,
-            font=("Arial", 8, "italic"),
-            justify=tk.CENTER
-        )
-        self.acq_desc_var_label.pack(pady=5)
-        
-        # Update description when selection changes
-        def update_acq_description(*args):
-            selected = self.acquisition_type_var.get()
-            desc = acq_descriptions.get(selected, "")
-            self.acq_desc_var_label.config(text=desc)
-        
-        self.acquisition_type_var.trace('w', update_acq_description)
-        
-        # Parameter axis configuration for acquisition function
-        axis_config_frame = tk.LabelFrame(
-            acquisition_section,
-            text="Axis Configuration",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 9, "bold"),
-            padx=5,
-            pady=5
-        )
-        axis_config_frame.pack(fill=tk.X, pady=10)
-        
-        # X-axis parameter for acquisition function
-        x_axis_acq_frame = tk.Frame(axis_config_frame, bg=COLOR_SURFACE)
-        x_axis_acq_frame.pack(fill=tk.X, pady=2)
-        
-        tk.Label(
-            x_axis_acq_frame,
-            text="X-Axis Parameter:",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 9, "bold")
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Use the same parameter variables as the main axis controls
-        self.acq_param1_combo = ttk.Combobox(
-            x_axis_acq_frame,
-            textvariable=self.param1_var,
-            values=self.available_parameters,
-            state="readonly",
-            width=20
-        )
-        self.acq_param1_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Y-axis parameter for acquisition function
-        y_axis_acq_frame = tk.Frame(axis_config_frame, bg=COLOR_SURFACE)
-        y_axis_acq_frame.pack(fill=tk.X, pady=2)
-        
-        tk.Label(
-            y_axis_acq_frame,
-            text="Y-Axis Parameter:",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 9, "bold")
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.acq_param2_combo = ttk.Combobox(
-            y_axis_acq_frame,
-            textvariable=self.param2_var,
-            values=self.available_parameters,
-            state="readonly",
-            width=20
-        )
-        self.acq_param2_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Additional acquisition function parameters
-        acq_params_frame = tk.LabelFrame(
-            acquisition_section,
-            text="Acquisition Parameters",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 9, "bold"),
-            padx=5,
-            pady=5
-        )
-        acq_params_frame.pack(fill=tk.X, pady=5)
-        
-        # Exploration parameter (for UCB)
-        exploration_frame = tk.Frame(acq_params_frame, bg=COLOR_SURFACE)
-        exploration_frame.pack(fill=tk.X, pady=2)
-        
-        tk.Label(
-            exploration_frame,
-            text="Exploration Factor (β):",
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 9)
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.exploration_var = tk.DoubleVar(value=2.0)
-        exploration_scale = tk.Scale(
-            exploration_frame,
-            from_=0.1, to=5.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=self.exploration_var,
-            bg=COLOR_SURFACE,
-            fg=COLOR_SECONDARY,
-            font=("Arial", 8),
-            length=120
-        )
-        exploration_scale.pack(side=tk.LEFT)
-        
-        tk.Label(
-            exploration_frame,
-            text="(higher = more exploration)",
-            bg=COLOR_SURFACE,
-            fg=COLOR_WARNING,
-            font=("Arial", 8, "italic")
-        ).pack(side=tk.LEFT, padx=(5, 0))
-        
-        # Store reference for mode switching
-        self.acquisition_controls_frame = acquisition_section
+        # Set acquisition type to qNEHVI (stored for compatibility)
+        self.acquisition_type_var = tk.StringVar(value="qNEHVI")
     
     def _create_weight_slider(self, parent: tk.Widget, response_name: str, row_index: int) -> None:
         """Create a weight slider for a single response."""
@@ -1638,11 +1464,9 @@ class SurfacePlotControlPanel:
         if hasattr(self, 'export_format_var'):
             self.export_format_var.set("PNG")
         
-        # Reset acquisition function settings
+        # Reset acquisition function settings (qNEHVI is set automatically in acquisition mode)
         if hasattr(self, 'acquisition_type_var'):
-            self.acquisition_type_var.set("EHVI")
-        if hasattr(self, 'exploration_var'):
-            self.exploration_var.set(2.0)
+            self.acquisition_type_var.set("qNEHVI")
         
         # Reset axis ranges to auto
         self.x_auto_var.set(True)
@@ -1704,17 +1528,14 @@ class SurfacePlotControlPanel:
             'export_format': getattr(self, 'export_format_var', tk.StringVar(value='PNG')).get()
         }
         
-        # Add acquisition type for acquisition mode
-        if hasattr(self, 'acquisition_type_var'):
-            options['acquisition_type'] = self.acquisition_type_var.get()
+        # Add acquisition type for acquisition mode (always qNEHVI)
+        if self.surface_mode_var.get() == 'acquisition':
+            options['acquisition_type'] = 'qNEHVI'
         else:
-            options['acquisition_type'] = 'EHVI'
+            options['acquisition_type'] = 'EHVI'  # Fallback for other modes
         
-        # Add exploration parameter for acquisition functions
-        if hasattr(self, 'exploration_var'):
-            options['exploration_factor'] = self.exploration_var.get()
-        else:
-            options['exploration_factor'] = 2.0
+        # Add exploration parameter for acquisition functions (not needed for qNEHVI)
+        options['exploration_factor'] = 2.0  # Default value for compatibility
         
         # Add weight information for weighted-sum mode
         if self.surface_mode_var.get() == 'weighted_sum':

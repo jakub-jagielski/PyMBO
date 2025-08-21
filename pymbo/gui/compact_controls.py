@@ -8,26 +8,6 @@ from tkinter import ttk
 import logging
 from typing import Dict, Any, Callable
 
-# Import modern dark theme constants
-try:
-    from .gui import ModernTheme
-except ImportError:
-    # Fallback light theme if import fails
-    class ModernTheme:
-        PRIMARY = "#1976D2"
-        SECONDARY = "#757575"
-        SUCCESS = "#4CAF50"
-        WARNING = "#FF9800"
-        ERROR = "#F44336"
-        BACKGROUND = "#FAFAFA"
-        SURFACE = "#FFFFFF"
-        SURFACE_VARIANT = "#F5F5F5"
-        SURFACE_ELEVATED = "#FFFFFF"
-        TEXT_PRIMARY = "#212121"
-        TEXT_SECONDARY = "#757575"
-        BORDER = "#E0E0E0"
-        BORDER_SUBTLE = "#2A2A2A"
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,51 +36,26 @@ class CompactPlotControlPanel:
         logger.info(f"Compact plot control panel created for {plot_type}")
     
     def create_controls(self):
-        """Create the compact control panel with modern dark theme"""
-        # Main control frame with modern styling
-        self.control_frame = tk.Frame(
-            self.parent, 
-            bg=ModernTheme.SURFACE,
-            relief='flat',
-            bd=1,
-            highlightbackground=ModernTheme.BORDER,
-            highlightthickness=1
-        )
+        """Create the compact control panel"""
+        # Main control frame with border
+        self.control_frame = tk.Frame(self.parent, bg='lightgray', relief='raised', bd=2)
         
-        # Modern title bar
-        title_frame = tk.Frame(self.control_frame, bg=ModernTheme.SURFACE_ELEVATED, height=32)
+        # Title bar
+        title_frame = tk.Frame(self.control_frame, bg='darkgray')
         title_frame.pack(fill=tk.X)
-        title_frame.pack_propagate(False)
         
-        title_label = tk.Label(
-            title_frame, 
-            text=f"{self.plot_type.replace('_', ' ').title()}", 
-            bg=ModernTheme.SURFACE_ELEVATED, 
-            fg=ModernTheme.TEXT_PRIMARY, 
-            font=('Segoe UI', 9, 'bold')
-        )
-        title_label.pack(side=tk.LEFT, padx=12, pady=6)
+        title_label = tk.Label(title_frame, text=f"{self.plot_type.replace('_', ' ').title()}", 
+                              bg='darkgray', fg='white', font=('Arial', 8, 'bold'))
+        title_label.pack(side=tk.LEFT, padx=5, pady=2)
         
-        # Modern close button
-        close_btn = tk.Button(
-            title_frame, 
-            text='×', 
-            command=self.hide, 
-            bg=ModernTheme.SURFACE_ELEVATED, 
-            fg=ModernTheme.TEXT_SECONDARY,
-            activebackground=ModernTheme.ERROR,
-            activeforeground="#FFFFFF",
-            bd=0, 
-            font=('Segoe UI', 10, 'bold'),
-            cursor='hand2',
-            relief='flat',
-            padx=8
-        )
-        close_btn.pack(side=tk.RIGHT, padx=8, pady=4)
+        # Close button
+        close_btn = tk.Button(title_frame, text='×', command=self.hide, 
+                             bg='darkgray', fg='white', bd=0, font=('Arial', 8))
+        close_btn.pack(side=tk.RIGHT, padx=2)
         
-        # Content frame with modern styling
-        content_frame = tk.Frame(self.control_frame, bg=ModernTheme.SURFACE)
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        # Content frame
+        content_frame = tk.Frame(self.control_frame, bg='lightgray')
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Compact axis controls
         self._create_compact_axis_controls(content_frame)
@@ -111,17 +66,17 @@ class CompactPlotControlPanel:
     def _create_compact_axis_controls(self, parent):
         """Create compact axis range controls"""
         # X-axis row
-        x_frame = tk.Frame(parent, bg=ModernTheme.SURFACE_VARIANT)
+        x_frame = tk.Frame(parent, bg='lightgray')
         x_frame.pack(fill=tk.X, pady=1)
         
-        tk.Label(x_frame, text="X:", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(x_frame, text="X:", bg='lightgray', font=('Arial', 7)).pack(side=tk.LEFT)
         x_min_entry = tk.Entry(x_frame, textvariable=self.axis_ranges['x_min']['var'], 
                               width=6, font=('Arial', 7))
         x_min_entry.pack(side=tk.LEFT, padx=2)
         # x_min_entry.bind('<Return>', self._on_axis_change)  # Removed real-time update
         # x_min_entry.bind('<FocusOut>', self._on_axis_change)  # Removed real-time update
         
-        tk.Label(x_frame, text="to", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(x_frame, text="to", bg='lightgray', font=('Arial', 7)).pack(side=tk.LEFT)
         x_max_entry = tk.Entry(x_frame, textvariable=self.axis_ranges['x_max']['var'], 
                               width=6, font=('Arial', 7))
         x_max_entry.pack(side=tk.LEFT, padx=2)
@@ -129,17 +84,17 @@ class CompactPlotControlPanel:
         # x_max_entry.bind('<FocusOut>', self._on_axis_change)  # Removed real-time update
         
         # Y-axis row
-        y_frame = tk.Frame(parent, bg=ModernTheme.SURFACE_VARIANT)
+        y_frame = tk.Frame(parent, bg='lightgray')
         y_frame.pack(fill=tk.X, pady=1)
         
-        tk.Label(y_frame, text="Y:", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(y_frame, text="Y:", bg='lightgray', font=('Arial', 7)).pack(side=tk.LEFT)
         y_min_entry = tk.Entry(y_frame, textvariable=self.axis_ranges['y_min']['var'], 
                               width=6, font=('Arial', 7))
         y_min_entry.pack(side=tk.LEFT, padx=2)
         # y_min_entry.bind('<Return>', self._on_axis_change)  # Removed real-time update
         # y_min_entry.bind('<FocusOut>', self._on_axis_change)  # Removed real-time update
         
-        tk.Label(y_frame, text="to", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(y_frame, text="to", bg='lightgray', font=('Arial', 7)).pack(side=tk.LEFT)
         y_max_entry = tk.Entry(y_frame, textvariable=self.axis_ranges['y_max']['var'], 
                               width=6, font=('Arial', 7))
         y_max_entry.pack(side=tk.LEFT, padx=2)
@@ -148,7 +103,7 @@ class CompactPlotControlPanel:
     
     def _create_compact_buttons(self, parent):
         """Create compact action buttons"""
-        button_frame = tk.Frame(parent, bg=ModernTheme.SURFACE_VARIANT)
+        button_frame = tk.Frame(parent, bg='lightgray')
         button_frame.pack(fill=tk.X, pady=2)
         
         auto_btn = tk.Button(button_frame, text="Auto", command=self._auto_scale,

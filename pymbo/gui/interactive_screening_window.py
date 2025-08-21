@@ -18,29 +18,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import numpy as np
 
-# Import modern dark theme constants
-try:
-    from .gui import ModernTheme
-except ImportError:
-    # Fallback light theme if import fails
-    class ModernTheme:
-        PRIMARY = "#1976D2"
-        SECONDARY = "#757575"
-        SUCCESS = "#4CAF50"
-        WARNING = "#FF9800"
-        ERROR = "#F44336"
-        BACKGROUND = "#FAFAFA"
-        SURFACE = "#FFFFFF"
-        SURFACE_VARIANT = "#2D2D2D"
-        SURFACE_ELEVATED = "#323232"
-        TEXT_PRIMARY = "#E0E0E0"
-        TEXT_SECONDARY = "#BDBDBD"
-        BORDER = "#404040"
-        
-        @staticmethod
-        def get_font(size=10, weight="normal", family="system"):
-            return ("Segoe UI", size, weight)
-
 logger = logging.getLogger(__name__)
 
 
@@ -129,16 +106,14 @@ class InteractiveScreeningWindow:
     def _create_window(self):
         """Create the main window and UI components."""
         self.window = tk.Toplevel(self.parent)
-        self.window.title("Interactive SGLBO Screening - Academic Optimization")
-        self.window.geometry("1200x800")  # Larger for better visibility
-        self.window.configure(bg=ModernTheme.BACKGROUND)
+        self.window.title("Interactive SGLBO Screening")
+        self.window.geometry("1000x700")
         self.window.grab_set()  # Make window modal
-        self.window.minsize(900, 600)  # Set minimum size
         
-        # Main container with scrollable content and dark theme
-        main_canvas = tk.Canvas(self.window, bg=ModernTheme.BACKGROUND, highlightthickness=0)
+        # Main container with scrollable content
+        main_canvas = tk.Canvas(self.window)
         scrollbar = ttk.Scrollbar(self.window, orient="vertical", command=main_canvas.yview)
-        scrollable_frame = tk.Frame(main_canvas, bg=ModernTheme.BACKGROUND)
+        scrollable_frame = ttk.Frame(main_canvas)
         
         scrollable_frame.bind(
             "<Configure>",

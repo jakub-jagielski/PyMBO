@@ -18,7 +18,7 @@ Performance Features:
     - Memory-efficient batch processing with configurable chunk sizes
 
 Author: Multi-Objective Optimization Laboratory
-Version: 4.0.0 Parallel Enhanced
+Version: 3.6.6 Parallel Enhanced
 """
 
 import numpy as np

@@ -95,7 +95,7 @@ class SimpleController:
         self._optimization_start_time: Optional[datetime] = None
         self._thread_lock = threading.Lock()  # For thread-safe operations
 
-        logger.info("Controller initialized successfully")
+        logger.debug("Controller initialized successfully")
 
     @property
     def is_busy(self) -> bool:
@@ -143,7 +143,10 @@ class SimpleController:
         if not self.has_optimizer:
             return False
         try:
-            return hasattr(self.optimizer, 'data_count') and self.optimizer.data_count > 0
+            # Check if experimental_data exists and is not empty
+            return (hasattr(self.optimizer, 'experimental_data') and 
+                    self.optimizer.experimental_data is not None and
+                    not self.optimizer.experimental_data.empty)
         except Exception:
             return False
 
@@ -205,7 +208,7 @@ class SimpleController:
                 from ..utils.plotting import SimplePlotManager
 
                 self.plot_manager = SimplePlotManager(self.optimizer)
-                logger.info("Plot manager initialized")
+                logger.debug("Plot manager initialized")
                 if hasattr(self.view, "set_plot_manager"):
                     self.view.set_plot_manager(self.plot_manager)
             except ImportError:
@@ -304,7 +307,7 @@ class SimpleController:
             try:
                 from ..utils.plotting import SimplePlotManager
                 self.plot_manager = SimplePlotManager(self.optimizer)
-                logger.info("Plot manager initialized")
+                logger.debug("Plot manager initialized")
                 if hasattr(self.view, "set_plot_manager"):
                     self.view.set_plot_manager(self.plot_manager)
             except ImportError:
@@ -760,7 +763,7 @@ class SimpleController:
                 },
                 "metadata": {
                     "save_timestamp": datetime.now().isoformat(),
-                    "version": "3.2.0",  # Increment version for sensitivity analysis control panel
+                    "version": "3.6.6",  # Increment version for constraint implementation
                     "has_hypervolume_cache": True,
                 },
             }
@@ -1544,4 +1547,143 @@ The screening optimizer is now ready to accept experimental data."""
             error_msg = f"Error exporting validation results: {str(e)}"
             logger.error(error_msg)
             self.view.show_error("Export Error", error_msg)
+            return False
+
+    def correct_last_result(self, new_values: Dict[str, float]) -> bool:
+        """
+        Correct the last experimental result for sequential Bayesian optimization.
+        
+        This method implements Solution 1: Last Result Correction as described in
+        academic literature for handling data entry errors in sequential optimization.
+        It only allows correction of the most recent result to maintain scientific
+        integrity while addressing practical data entry issues.
+        
+        Args:
+            new_values: Dictionary mapping column names to corrected values
+            
+        Returns:
+            True if correction successful, False otherwise
+            
+        Raises:
+            ValueError: If no experimental data exists or correction is invalid
+        """
+        try:
+            with self._thread_lock:
+                # Validate prerequisites
+                if not self.has_optimizer or not self.has_data:
+                    raise ValueError("No optimization session or experimental data available")
+                
+                if len(self.optimizer.experimental_data) == 0:
+                    raise ValueError("No experimental data to correct")
+                
+                # Get current data
+                experimental_data = self.optimizer.experimental_data.copy()
+                original_last_row = experimental_data.iloc[-1].copy()
+                
+                # Validate correction values
+                for column, value in new_values.items():
+                    if column not in experimental_data.columns:
+                        raise ValueError(f"Column '{column}' not found in experimental data")
+                    
+                    if not isinstance(value, (int, float)) or np.isnan(value) or np.isinf(value):
+                        raise ValueError(f"Invalid value for '{column}': {value}")
+                
+                # Log the correction operation for audit trail
+                logger.info(f"Last Result Correction initiated:")
+                logger.info(f"Original values: {original_last_row[list(new_values.keys())].to_dict()}")
+                logger.info(f"Corrected values: {new_values}")
+                
+                # Apply corrections to the last row
+                for column, value in new_values.items():
+                    experimental_data.iloc[-1, experimental_data.columns.get_loc(column)] = value
+                
+                # Validate the corrected data scientifically
+                corrected_row = experimental_data.iloc[-1]
+                
+                # Check for reasonable parameter bounds (with robust attribute access)
+                try:
+                    # Try to get parameter names through different possible attributes
+                    if hasattr(self.optimizer, 'parameter_names'):
+                        param_names = self.optimizer.parameter_names
+                    elif hasattr(self.optimizer, 'base_optimizer') and hasattr(self.optimizer.base_optimizer, 'parameter_names'):
+                        param_names = self.optimizer.base_optimizer.parameter_names
+                    else:
+                        # Fallback: infer from experimental data columns
+                        param_names = [col for col in experimental_data.columns if col not in self.optimizer.objective_names]
+                    
+                    # Try to get parameter config through different possible attributes
+                    if hasattr(self.optimizer, 'params_config'):
+                        params_config = self.optimizer.params_config
+                    elif hasattr(self.optimizer, 'base_optimizer') and hasattr(self.optimizer.base_optimizer, 'params_config'):
+                        params_config = self.optimizer.base_optimizer.params_config
+                    else:
+                        params_config = {}
+                        logger.warning("Parameter config not found, skipping bounds validation")
+                    
+                    # Validate parameter bounds if config is available
+                    for param_name in param_names:
+                        if param_name in new_values and param_name in params_config:
+                            param_config = params_config[param_name]
+                            value = corrected_row[param_name]
+                            
+                            if param_config['type'] in ['continuous', 'integer']:
+                                if not (param_config['bounds'][0] <= value <= param_config['bounds'][1]):
+                                    raise ValueError(f"Corrected value {value} for '{param_name}' outside bounds {param_config['bounds']}")
+                            
+                            elif param_config['type'] == 'categorical':
+                                if value not in param_config['choices']:
+                                    raise ValueError(f"Corrected value '{value}' for '{param_name}' not in choices {param_config['choices']}")
+                
+                except Exception as validation_error:
+                    logger.warning(f"Parameter validation failed: {validation_error}. Proceeding without bounds check.")
+                
+                # Update optimizer's experimental data
+                self.optimizer.experimental_data = experimental_data
+                
+                # Clear existing models to force retraining on next suggestion
+                try:
+                    # Clear model caches to ensure fresh training with corrected data
+                    if hasattr(self.optimizer, 'models'):
+                        self.optimizer.models = {}
+                    elif hasattr(self.optimizer, 'base_optimizer') and hasattr(self.optimizer.base_optimizer, 'models'):
+                        self.optimizer.base_optimizer.models = {}
+                    
+                    # Clear training data caches to force reload
+                    train_attrs = ['train_X', 'train_Y', '_train_X', '_train_Y', 'fitted_models']
+                    for attr in train_attrs:
+                        if hasattr(self.optimizer, attr):
+                            setattr(self.optimizer, attr, None)
+                        elif hasattr(self.optimizer, 'base_optimizer') and hasattr(self.optimizer.base_optimizer, attr):
+                            setattr(self.optimizer.base_optimizer, attr, None)
+                    
+                    logger.info("GP models cleared successfully - will retrain with corrected data on next suggestion")
+                    
+                except Exception as model_error:
+                    logger.debug(f"Model clearing failed: {model_error}. Models will still retrain on next suggestion.")
+                
+                # Update plot manager if available
+                if self.plot_manager:
+                    try:
+                        self.plot_manager.optimizer = self.optimizer
+                        logger.info("Plot manager updated with corrected data")
+                    except Exception as plot_error:
+                        logger.warning(f"Plot manager update failed: {plot_error}")
+                
+                # Update view status
+                correction_summary = ', '.join([f"{col}: {orig:.4f} → {new:.4f}" 
+                                              for col, new in new_values.items() 
+                                              for orig in [original_last_row[col]]])
+                
+                self.view.set_status(f"Last result corrected: {correction_summary}")
+                
+                logger.info("Last result correction completed successfully")
+                return True
+                
+        except Exception as e:
+            error_msg = f"Error correcting last result: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            if hasattr(self.view, "show_error"):
+                self.view.show_error("Correction Error", error_msg)
+            
             return False

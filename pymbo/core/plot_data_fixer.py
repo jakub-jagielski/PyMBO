@@ -14,7 +14,7 @@ Key fixes:
 - Fixed convergence rate calculations
 
 Author: Multi-Objective Optimization Laboratory
-Version: 1.0.0 - Plot Data Fix
+Version: 3.6.6 - Plot Data Fix
 """
 
 import logging

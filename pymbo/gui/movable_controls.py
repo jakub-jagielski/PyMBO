@@ -8,14 +8,6 @@ from tkinter import ttk
 import logging
 from typing import Dict, Any, Callable
 
-try:
-    from .gui import ModernTheme
-except ImportError:
-    # Fallback if import fails
-    class ModernTheme:
-        SURFACE_VARIANT = "#F5F5F5"
-        PRIMARY = "#1976D2"
-
 logger = logging.getLogger(__name__)
 
 
@@ -50,10 +42,10 @@ class MovablePlotControlPanel:
     def create_controls(self):
         """Create the movable control panel"""
         # Main control frame with border
-        self.control_frame = tk.Frame(self.parent, bg=ModernTheme.SURFACE_VARIANT, relief='raised', bd=2)
+        self.control_frame = tk.Frame(self.parent, bg='lightsteelblue', relief='raised', bd=2)
         
         # Title bar (draggable)
-        self.title_frame = tk.Frame(self.control_frame, bg=ModernTheme.PRIMARY, cursor='fleur')
+        self.title_frame = tk.Frame(self.control_frame, bg='steelblue', cursor='fleur')
         self.title_frame.pack(fill=tk.X)
         
         # Bind drag events to title frame
@@ -61,18 +53,18 @@ class MovablePlotControlPanel:
         self.title_frame.bind('<B1-Motion>', self.do_drag)
         
         title_label = tk.Label(self.title_frame, text=f"📊 {self.plot_type.replace('_', ' ').title()}", 
-                              bg=ModernTheme.PRIMARY, fg='#FFFFFF', font=('Arial', 8, 'bold'))
+                              bg='steelblue', fg='white', font=('Arial', 8, 'bold'))
         title_label.pack(side=tk.LEFT, padx=5, pady=2)
         title_label.bind('<Button-1>', self.start_drag)
         title_label.bind('<B1-Motion>', self.do_drag)
         
         # Close button
         close_btn = tk.Button(self.title_frame, text='×', command=self.hide, 
-                             bg=ModernTheme.PRIMARY, fg='#FFFFFF', bd=0, font=('Arial', 8))
+                             bg='steelblue', fg='white', bd=0, font=('Arial', 8))
         close_btn.pack(side=tk.RIGHT, padx=2)
         
         # Content frame
-        content_frame = tk.Frame(self.control_frame, bg=ModernTheme.SURFACE_VARIANT)
+        content_frame = tk.Frame(self.control_frame, bg='lightsteelblue')
         content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Axis controls
@@ -84,41 +76,41 @@ class MovablePlotControlPanel:
     def _create_movable_axis_controls(self, parent):
         """Create axis range controls for movable panel"""
         # Axis controls frame
-        axis_frame = tk.LabelFrame(parent, text="Axis Ranges", bg=ModernTheme.SURFACE_VARIANT, 
+        axis_frame = tk.LabelFrame(parent, text="Axis Ranges", bg='lightsteelblue', 
                                   font=('Arial', 7))
         axis_frame.pack(fill=tk.X, pady=2)
         
         # X-axis controls
-        x_frame = tk.Frame(axis_frame, bg=ModernTheme.SURFACE_VARIANT)
+        x_frame = tk.Frame(axis_frame, bg='lightsteelblue')
         x_frame.pack(fill=tk.X, padx=3, pady=1)
         
-        tk.Label(x_frame, text="X:", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(x_frame, text="X:", bg='lightsteelblue', font=('Arial', 7)).pack(side=tk.LEFT)
         x_min_entry = tk.Entry(x_frame, textvariable=self.axis_ranges['x_min']['var'], 
                               width=8, font=('Arial', 7))
         x_min_entry.pack(side=tk.LEFT, padx=2)
         
-        tk.Label(x_frame, text="to", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(x_frame, text="to", bg='lightsteelblue', font=('Arial', 7)).pack(side=tk.LEFT)
         x_max_entry = tk.Entry(x_frame, textvariable=self.axis_ranges['x_max']['var'], 
                               width=8, font=('Arial', 7))
         x_max_entry.pack(side=tk.LEFT, padx=2)
         
         # Y-axis controls
-        y_frame = tk.Frame(axis_frame, bg=ModernTheme.SURFACE_VARIANT)
+        y_frame = tk.Frame(axis_frame, bg='lightsteelblue')
         y_frame.pack(fill=tk.X, padx=3, pady=1)
         
-        tk.Label(y_frame, text="Y:", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(y_frame, text="Y:", bg='lightsteelblue', font=('Arial', 7)).pack(side=tk.LEFT)
         y_min_entry = tk.Entry(y_frame, textvariable=self.axis_ranges['y_min']['var'], 
                               width=8, font=('Arial', 7))
         y_min_entry.pack(side=tk.LEFT, padx=2)
         
-        tk.Label(y_frame, text="to", bg=ModernTheme.SURFACE_VARIANT, font=('Arial', 7)).pack(side=tk.LEFT)
+        tk.Label(y_frame, text="to", bg='lightsteelblue', font=('Arial', 7)).pack(side=tk.LEFT)
         y_max_entry = tk.Entry(y_frame, textvariable=self.axis_ranges['y_max']['var'], 
                               width=8, font=('Arial', 7))
         y_max_entry.pack(side=tk.LEFT, padx=2)
     
     def _create_movable_buttons(self, parent):
         """Create action buttons for movable panel"""
-        button_frame = tk.Frame(parent, bg=ModernTheme.SURFACE_VARIANT)
+        button_frame = tk.Frame(parent, bg='lightsteelblue')
         button_frame.pack(fill=tk.X, pady=3)
         
         auto_btn = tk.Button(button_frame, text="Auto Scale", command=self._auto_scale,

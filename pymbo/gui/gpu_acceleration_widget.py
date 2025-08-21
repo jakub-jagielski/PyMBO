@@ -21,7 +21,7 @@ Classes:
     GPUValidationControls: GPU-accelerated validation controls
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.1.6 GPU Accelerated
+Version: 3.6.6 GPU Accelerated
 """
 
 import tkinter as tk
@@ -54,6 +54,7 @@ class GPUStatusIndicator(tk.Frame):
         self.device_info = {}
         self.status_var = tk.StringVar(value="Detecting...")
         self.device_var = tk.StringVar(value="Unknown")
+        self._shutdown_flag = threading.Event()
         
         self._create_status_display()
         self._start_status_monitoring()
@@ -94,13 +95,16 @@ class GPUStatusIndicator(tk.Frame):
     def _start_status_monitoring(self):
         """Start background thread for status monitoring."""
         def monitor_status():
-            while True:
+            while not self._shutdown_flag.is_set():
                 try:
                     self._update_device_status()
-                    time.sleep(5)  # Update every 5 seconds
+                    # Use wait instead of sleep to allow interruption
+                    if self._shutdown_flag.wait(5.0):  # Update every 5 seconds
+                        break
                 except Exception as e:
                     logger.error(f"GPU status monitoring error: {e}")
-                    time.sleep(10)  # Wait longer if error occurs
+                    if self._shutdown_flag.wait(10.0):  # Wait longer if error occurs
+                        break
         
         thread = threading.Thread(target=monitor_status, daemon=True)
         thread.start()
@@ -144,10 +148,21 @@ class GPUStatusIndicator(tk.Frame):
     def _update_ui(self, color: str, status: str):
         """Update UI elements in main thread."""
         try:
-            self.status_canvas.itemconfig(self.status_circle, fill=color)
-            self.status_var.set(status)
+            # Check if widget still exists before updating
+            if hasattr(self, 'status_canvas') and self.status_canvas.winfo_exists():
+                self.status_canvas.itemconfig(self.status_circle, fill=color)
+            if hasattr(self, 'status_var'):
+                self.status_var.set(status)
+        except tk.TclError:
+            # Widget has been destroyed during shutdown - silently ignore
+            pass
         except Exception as e:
-            logger.error(f"Failed to update GPU status UI: {e}")
+            logger.debug(f"GPU status UI update failed (likely during shutdown): {e}")
+    
+    def destroy(self):
+        """Clean shutdown of monitoring thread."""
+        self._shutdown_flag.set()
+        super().destroy()
 
 
 class GPUMemoryMonitor(tk.Frame):
@@ -156,6 +171,7 @@ class GPUMemoryMonitor(tk.Frame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, bg=GPU_COLORS['background'], **kwargs)
         self.memory_info = {}
+        self._shutdown_flag = threading.Event()
         
         self._create_memory_display()
         self._start_memory_monitoring()
@@ -179,13 +195,16 @@ class GPUMemoryMonitor(tk.Frame):
     def _start_memory_monitoring(self):
         """Start background thread for memory monitoring."""
         def monitor_memory():
-            while True:
+            while not self._shutdown_flag.is_set():
                 try:
                     self._update_memory_info()
-                    time.sleep(3)  # Update every 3 seconds
+                    # Use wait instead of sleep to allow interruption
+                    if self._shutdown_flag.wait(3.0):  # Update every 3 seconds
+                        break
                 except Exception as e:
                     logger.error(f"Memory monitoring error: {e}")
-                    time.sleep(10)
+                    if self._shutdown_flag.wait(10.0):  # Wait longer if error occurs
+                        break
         
         thread = threading.Thread(target=monitor_memory, daemon=True)
         thread.start()
@@ -243,10 +262,16 @@ class GPUMemoryMonitor(tk.Frame):
                     except Exception as label_error:
                         logger.error(f"Failed to create label for {key}: {label_error}")
                         
+        except tk.TclError:
+            # Widget has been destroyed during shutdown - silently ignore
+            pass
         except Exception as e:
-            logger.error(f"Failed to update memory UI: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.debug(f"Memory UI update failed (likely during shutdown): {e}")
+    
+    def destroy(self):
+        """Clean shutdown of monitoring thread."""
+        self._shutdown_flag.set()
+        super().destroy()
 
 
 class GPUPerformanceDisplay(tk.Frame):
@@ -409,7 +434,7 @@ class GPUValidationControls(tk.Frame):
         # Run GPU Validation button
         self.run_button = tk.Button(button_frame, text="🚀 Run GPU Validation",
                                   font=('Arial', 10, 'bold'),
-                                  bg=GPU_COLORS['success'], fg='#FFFFFF',
+                                  bg=GPU_COLORS['success'], fg='white',
                                   command=self._run_gpu_validation)
         self.run_button.pack(side=tk.LEFT, padx=(0, 10))
         

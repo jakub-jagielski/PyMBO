@@ -22,7 +22,7 @@ Functions:
     create_gp_slice_control_panel: Factory function for control panel instantiation
 
 Author: PyMBO Development Team
-Version: 3.2.0 Enhanced (Popout Window)
+Version: 3.6.6 Enhanced (Popout Window)
 """
 
 import tkinter as tk
@@ -121,6 +121,7 @@ class GPSliceControlPanel:
             'show_95_ci': tk.BooleanVar(value=True),
             'show_data_points': tk.BooleanVar(value=True),
             'show_acquisition': tk.BooleanVar(value=False),
+            'show_suggested_points': tk.BooleanVar(value=False),
             'show_legend': tk.BooleanVar(value=True),
             'show_grid': tk.BooleanVar(value=True),
             'show_diagnostics': tk.BooleanVar(value=False)
@@ -483,6 +484,29 @@ class GPSliceControlPanel:
             font=("Arial", 8, "italic")
         ).pack(side=tk.LEFT, padx=(10, 0))
         
+        # Suggested points checkbox
+        suggested_points_frame = tk.Frame(visibility_section, bg=COLOR_SURFACE)
+        suggested_points_frame.pack(fill=tk.X, pady=2)
+        
+        tk.Checkbutton(
+            suggested_points_frame,
+            text="Show Suggested Points",
+            variable=self.series_visibility['show_suggested_points'],
+            bg=COLOR_SURFACE,
+            fg=COLOR_SECONDARY,
+            font=("Arial", 9),
+            activebackground=COLOR_BACKGROUND,
+            selectcolor=COLOR_SURFACE
+        ).pack(side=tk.LEFT)
+        
+        tk.Label(
+            suggested_points_frame,
+            text="(With dotted lines to axes)",
+            bg=COLOR_SURFACE,
+            fg=COLOR_WARNING,
+            font=("Arial", 8, "italic")
+        ).pack(side=tk.LEFT, padx=(10, 0))
+        
         # Legend visibility checkbox
         legend_frame = tk.Frame(visibility_section, bg=COLOR_SURFACE)
         legend_frame.pack(fill=tk.X, pady=2)
@@ -803,7 +827,40 @@ class GPSliceControlPanel:
         """
         # Note: We removed automatic updates to match Progress benchmark requirement
         # Users must click "Refresh Plot" to update the plot
-        pass
+        
+        # However, we do want to automatically update the fixed value when parameters change
+        # to avoid logical inconsistencies (bug fix)
+        self.x_param_var.trace('w', self._on_parameter_change)
+        
+        # Store the previous parameter to detect changes
+        self._previous_x_param = self.x_param_var.get()
+    
+    def _on_parameter_change(self, *args) -> None:
+        """
+        Handle parameter change events for the X-axis parameter selection.
+        
+        This method is called when the X parameter selection changes and logs
+        the change for debugging purposes. The actual parameter switching logic
+        is handled in the main GUI refresh callback.
+        
+        Args:
+            *args: Variable arguments from the trace callback (not used)
+        """
+        try:
+            current_param = self.x_param_var.get()
+            previous_param = getattr(self, '_previous_x_param', '')
+            
+            if current_param != previous_param:
+                logger.debug(f"GP Slice control panel: X parameter changed from '{previous_param}' to '{current_param}'")
+                # Update the stored previous parameter
+                self._previous_x_param = current_param
+                
+                # Note: The actual parameter switching logic (updating fixed value, etc.)
+                # is handled in the main GUI's _refresh_gp_slice_plot method when the
+                # user clicks the Refresh Plot button.
+                
+        except Exception as e:
+            logger.warning(f"Error in parameter change callback: {e}")
     
     def _refresh_plot(self) -> None:
         """
@@ -887,6 +944,7 @@ class GPSliceControlPanel:
         self.series_visibility['show_95_ci'].set(True)
         self.series_visibility['show_data_points'].set(True)
         self.series_visibility['show_acquisition'].set(False)
+        self.series_visibility['show_suggested_points'].set(False)
         self.series_visibility['show_legend'].set(True)
         self.series_visibility['show_grid'].set(True)
         self.series_visibility['show_diagnostics'].set(False)
@@ -938,6 +996,7 @@ class GPSliceControlPanel:
             'show_95_ci': self.series_visibility['show_95_ci'].get(),
             'show_data_points': self.series_visibility['show_data_points'].get(),
             'show_acquisition': self.series_visibility['show_acquisition'].get(),
+            'show_suggested_points': self.series_visibility['show_suggested_points'].get(),
             'show_legend': self.series_visibility['show_legend'].get(),
             'show_grid': self.series_visibility['show_grid'].get(),
             'show_diagnostics': self.series_visibility['show_diagnostics'].get(),

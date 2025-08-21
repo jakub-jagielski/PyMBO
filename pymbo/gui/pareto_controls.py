@@ -20,7 +20,7 @@ Functions:
     create_pareto_control_panel: Factory function for control panel instantiation
 
 Author: PyMBO Development Team
-Version: 3.2.0 Enhanced
+Version: 3.6.6 Enhanced
 """
 
 import tkinter as tk
@@ -137,14 +137,14 @@ class ParetoPlotControlPanel:
         """
         self.available_columns = []
         
-        # Extract parameter columns
+        # Extract parameter columns - only optimization objectives, not constraints
         for param_name, param_config in self.params_config.items():
-            if param_config.get("goal") in ["Maximize", "Minimize", "Target"]:
+            if param_config.get("goal") in ["Maximize", "Minimize"]:
                 self.available_columns.append(param_name)
         
-        # Extract response columns
+        # Extract response columns - only optimization objectives, not constraints
         for response_name, response_config in self.responses_config.items():
-            if response_config.get("goal") in ["Maximize", "Minimize", "Target"]:
+            if response_config.get("goal") in ["Maximize", "Minimize"]:
                 self.available_columns.append(response_name)
         
         # Set default selections

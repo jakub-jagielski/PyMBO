@@ -19,7 +19,7 @@ Key improvements:
 - Memory optimization for long benchmark runs
 
 Author: Multi-Objective Optimization Laboratory
-Version: 1.0.0 - Enhanced with Clean Output
+Version: 3.6.6 - Enhanced with Clean Output
 """
 
 import logging

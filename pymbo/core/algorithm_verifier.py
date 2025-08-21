@@ -12,7 +12,7 @@ Classes:
     VerificationResults: Standardized results container
 
 Author: PyMBO Development Team
-Version: 5.0.0 - Unified Verification Architecture
+Version: 3.6.6 - Unified Verification Architecture
 """
 
 import numpy as np

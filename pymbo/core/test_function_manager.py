@@ -10,7 +10,7 @@ Classes:
     TestFunctionManager: Centralized test function registry and manager
 
 Author: PyMBO Development Team
-Version: 5.0.0 - Unified Verification Architecture
+Version: 3.6.6 - Unified Verification Architecture
 """
 
 import numpy as np

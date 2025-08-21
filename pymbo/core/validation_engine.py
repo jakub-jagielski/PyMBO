@@ -12,7 +12,7 @@ Classes:
     EnhancedValidationEngine: New parallel-enabled validation engine
 
 Author: Multi-Objective Optimization Laboratory
-Version: 4.0.0 - Parallel Validation Architecture
+Version: 3.6.6 - Parallel Validation Architecture
 """
 
 import numpy as np

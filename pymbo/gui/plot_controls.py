@@ -8,26 +8,6 @@ from tkinter import ttk
 import logging
 from typing import Dict, Any, Optional, Callable
 
-# Import modern dark theme constants
-try:
-    from .gui import ModernTheme
-except ImportError:
-    # Fallback light theme if import fails
-    class ModernTheme:
-        PRIMARY = "#1976D2"
-        SECONDARY = "#757575"
-        SUCCESS = "#4CAF50"
-        WARNING = "#FF9800"
-        ERROR = "#F44336"
-        BACKGROUND = "#FAFAFA"
-        SURFACE = "#FFFFFF"
-        SURFACE_VARIANT = "#F5F5F5"
-        SURFACE_ELEVATED = "#FFFFFF"
-        TEXT_PRIMARY = "#212121"
-        TEXT_SECONDARY = "#757575"
-        BORDER = "#E0E0E0"
-        BORDER_SUBTLE = "#F0F0F0"
-
 logger = logging.getLogger(__name__)
 
 
@@ -55,28 +35,18 @@ class EnhancedPlotControlPanel:
         logger.info(f"Enhanced plot control panel created for {plot_type}")
     
     def create_window(self):
-        """Create the control panel window with modern dark theme"""
+        """Create the control panel window"""
         if self.window is not None:
             self.show()
             return
             
         self.window = tk.Toplevel(self.parent)
-        self.window.title(f"{self.plot_type.replace('_', ' ').title()} - Plot Controls")
-        self.window.geometry("380x500")  # Larger for better spacing
-        self.window.configure(bg=ModernTheme.BACKGROUND)
-        self.window.resizable(True, True)
-        self.window.minsize(320, 400)
+        self.window.title(f"{self.plot_type.replace('_', ' ').title()} Controls")
+        self.window.geometry("300x400")
         
-        # Create main frame with modern styling
-        main_frame = tk.Frame(
-            self.window,
-            bg=ModernTheme.SURFACE,
-            relief="flat",
-            bd=1,
-            highlightbackground=ModernTheme.BORDER_SUBTLE,
-            highlightthickness=1
-        )
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+        # Create main frame
+        main_frame = ttk.Frame(self.window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Title
         title_label = ttk.Label(main_frame, text=f"{self.plot_type.replace('_', ' ').title()} Controls", 

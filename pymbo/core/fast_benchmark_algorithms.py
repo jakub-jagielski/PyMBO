@@ -11,7 +11,7 @@ Classes:
     FastMOBOAlgorithm: Optimized MOBO wrapper
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.2.0 Enhanced - Performance Optimized
+Version: 3.6.6 Enhanced - Performance Optimized
 """
 
 import numpy as np

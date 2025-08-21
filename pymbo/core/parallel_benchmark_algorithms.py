@@ -12,7 +12,7 @@ Features:
 - Robust error handling and result aggregation
 
 Author: Multi-Objective Optimization Laboratory
-Version: 1.0.0
+Version: 3.6.6
 """
 
 import logging

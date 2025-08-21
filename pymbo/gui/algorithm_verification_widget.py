@@ -12,7 +12,7 @@ Classes:
     VerificationResultsPanel: Results display panel
 
 Author: PyMBO Development Team
-Version: 5.0.0 - Unified Verification Architecture
+Version: 3.6.6 - Unified Verification Architecture
 """
 
 import tkinter as tk
@@ -68,8 +68,7 @@ class VerificationConfigPanel:
         self.config_frame = ttk.LabelFrame(
             self.config_container,
             text="⚙️ Verification Configuration",
-            padding="10",
-            style="WhiteBG.TLabelFrame"
+            padding="10"
         )
         self.config_frame.pack(fill="x", pady=(5, 0))
         
@@ -107,7 +106,7 @@ class VerificationConfigPanel:
     
     def _create_test_functions_section(self, parent):
         """Create test functions selection section."""
-        tf_frame = ttk.LabelFrame(parent, text="📊 Test Functions", padding="5", style="WhiteBG.TLabelFrame")
+        tf_frame = ttk.LabelFrame(parent, text="📊 Test Functions", padding="5")
         tf_frame.pack(fill="x", pady=(0, 10))
         
         # Load available test functions
@@ -137,7 +136,7 @@ class VerificationConfigPanel:
     
     def _create_algorithms_section(self, parent):
         """Create algorithms selection section."""
-        alg_frame = ttk.LabelFrame(parent, text="🚀 Algorithms", padding="5", style="WhiteBG.TLabelFrame")
+        alg_frame = ttk.LabelFrame(parent, text="🚀 Algorithms", padding="5")
         alg_frame.pack(fill="x", pady=(0, 10))
         
         # Available algorithms with descriptions
@@ -170,7 +169,7 @@ class VerificationConfigPanel:
     
     def _create_parameters_section(self, parent):
         """Create parameters input section."""
-        params_frame = ttk.LabelFrame(parent, text="📋 Parameters", padding="5", style="WhiteBG.TLabelFrame")
+        params_frame = ttk.LabelFrame(parent, text="📋 Parameters", padding="5")
         params_frame.pack(fill="x", pady=(0, 10))
         
         # Grid layout for parameters
@@ -211,7 +210,7 @@ class VerificationConfigPanel:
     
     def _create_execution_options_section(self, parent):
         """Create execution options section."""
-        exec_frame = ttk.LabelFrame(parent, text="⚡ Execution Options", padding="5", style="WhiteBG.TLabelFrame")
+        exec_frame = ttk.LabelFrame(parent, text="⚡ Execution Options", padding="5")
         exec_frame.pack(fill="x")
         
         # Grid layout for options
@@ -694,7 +693,7 @@ class VerificationResultsPanel:
             self.statistics_frame,
             font=("Consolas", 10),
             wrap=tk.WORD,
-            bg="white",
+            bg="#f8f9fa",
             fg="#212529"
         )
         

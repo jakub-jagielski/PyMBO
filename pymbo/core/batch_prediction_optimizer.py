@@ -11,7 +11,7 @@ Key optimizations:
 4. GPU-optimized batch inference
 
 Author: Multi-Objective Optimization Laboratory
-Version: 1.0.0 Batch Enhanced
+Version: 3.6.6 Batch Enhanced
 """
 
 import logging

@@ -41,7 +41,7 @@ class SimplePlotManager:
         plt.style.use("default")
         sns.set_palette("husl")
 
-        logger.info("Enhanced plot manager initialized")
+        logger.debug("Enhanced plot manager initialized")
 
     def _extract_axis_data(self, history_df, x_axis, y_axis):
         """Extract data for dynamic axis binding"""
@@ -825,6 +825,7 @@ class SimplePlotManager:
         show_95_ci=True,
         show_data_points=True,
         show_acquisition=False,
+        show_suggested_points=False,
         show_legend=True,
         show_grid=True,
         show_diagnostics=True,
@@ -992,7 +993,7 @@ class SimplePlotManager:
                 try:
                     self._add_acquisition_function_overlay(
                         ax, fig, x_plot_adj, param1_name, param2_name, 
-                        fixed_param_value, base_point
+                        fixed_param_value, base_point, show_suggested_points
                     )
                 except Exception as e:
                     logger.warning(f"Could not add acquisition function overlay: {e}")
@@ -1242,7 +1243,7 @@ class SimplePlotManager:
         except Exception as e:
             logger.warning(f"Could not add model diagnostics: {e}")
 
-    def _add_acquisition_function_overlay(self, ax, fig, x_values, param1_name, param2_name, fixed_param_value, base_point):
+    def _add_acquisition_function_overlay(self, ax, fig, x_values, param1_name, param2_name, fixed_param_value, base_point, show_suggested_points=False):
         """Add acquisition function values as overlay on GP slice plot"""
         try:
             # Check if we have sufficient data for acquisition function
@@ -1295,6 +1296,31 @@ class SimplePlotManager:
             ax2.set_ylabel('Acquisition Function Value', color='orange', fontweight='bold')
             ax2.tick_params(axis='y', labelcolor='orange')
             ax2.grid(False)  # Don't overlay grid on acquisition function
+            
+            # Add suggested points with dotted lines if requested
+            if show_suggested_points and acq_values:
+                try:
+                    # Find the point with maximum acquisition value (suggested next point)
+                    max_acq_idx = np.argmax(acq_values)
+                    max_x = x_values[max_acq_idx]
+                    max_acq = acq_values[max_acq_idx]
+                    
+                    # Plot the suggested point on the acquisition function line
+                    ax2.plot(max_x, max_acq, 'ro', markersize=8, markerfacecolor='red',
+                            markeredgecolor='darkred', markeredgewidth=2, 
+                            label='Suggested Point', zorder=10)
+                    
+                    # Add dotted lines to both axes
+                    # Vertical line to parameter axis
+                    ax.axvline(x=max_x, color='red', linestyle=':', linewidth=2, alpha=0.7)
+                    
+                    # Horizontal line to acquisition function axis
+                    ax2.axhline(y=max_acq, color='red', linestyle=':', linewidth=2, alpha=0.7)
+                    
+                    logger.debug(f"Added suggested point at x={max_x:.4f}, acq={max_acq:.4f}")
+                    
+                except Exception as e:
+                    logger.debug(f"Error adding suggested points: {e}")
             
             # Add acquisition function to legend
             lines1, labels1 = ax.get_legend_handles_labels()
@@ -1667,7 +1693,7 @@ class SimplePlotManager:
             surface_title = f"Acquisition Function: {acq_name}"
             z_label = f"{acq_name} Value"
             
-            logger.info(f"Calculated acquisition surface with range [{Z_mean.min():.3e}, {Z_mean.max():.3e}]")
+            logger.debug(f"Calculated acquisition surface with range [{Z_mean.min():.3e}, {Z_mean.max():.3e}]")
             
             return Z_mean, Z_std, surface_title, z_label
             
@@ -2968,7 +2994,7 @@ class SimplePlotManager:
             if analysis_type == "residuals":
                 self._create_residuals_plot(ax, actual_values, predicted_values, response_name)
                 
-            elif analysis_type == "predictions":
+            elif analysis_type == "predictions" or analysis_type == "parity":
                 self._create_predictions_plot(ax, actual_values, predicted_values, response_name)
                 
             elif analysis_type == "uncertainty":
@@ -3906,6 +3932,176 @@ class SimplePlotManager:
             n_params = len(continuous_params)
             return [1.0/n_params] * n_params, [0.1] * n_params
 
+    def _calculate_mixed_sensitivity(self, model, continuous_params, param_bounds, n_samples, random_seed=42):
+        """
+        Calculate mixed parameter sensitivity including both continuous and discrete parameters.
+        
+        Uses variance-based methods for continuous parameters and exhaustive enumeration
+        for discrete parameters, providing a unified sensitivity ranking.
+        
+        Args:
+            model: GP model for predictions
+            continuous_params: List of continuous parameter names
+            param_bounds: List of parameter bounds for continuous parameters
+            n_samples: Number of samples for analysis
+            random_seed: Random seed for reproducibility
+            
+        Returns:
+            tuple: (sensitivities, errors, param_names) - combined sensitivity results
+        """
+        try:
+            logger.debug("Starting mixed parameter sensitivity analysis")
+            
+            # Initialize combined results
+            all_sensitivities = []
+            all_errors = []
+            all_param_names = []
+            
+            # 1. Calculate continuous parameter sensitivities using variance method
+            if continuous_params:
+                logger.debug(f"Analyzing {len(continuous_params)} continuous parameters")
+                cont_sensitivities, cont_errors = self._calculate_variance_sensitivity(
+                    model, continuous_params, param_bounds, n_samples, random_seed
+                )
+                all_sensitivities.extend(cont_sensitivities)
+                all_errors.extend(cont_errors)
+                all_param_names.extend(continuous_params)
+            
+            # 2. Identify and analyze discrete parameters
+            discrete_params = []
+            categorical_params = []
+            
+            for param_name, param_config in self.optimizer.params_config.items():
+                if param_name not in continuous_params:
+                    if param_config["type"] == "discrete":
+                        discrete_params.append(param_name)
+                    elif param_config["type"] == "categorical":
+                        categorical_params.append(param_name)
+            
+            # 3. Calculate discrete parameter sensitivities
+            if discrete_params or categorical_params:
+                logger.debug(f"Analyzing {len(discrete_params)} discrete and {len(categorical_params)} categorical parameters")
+                
+                for param_name in discrete_params + categorical_params:
+                    param_config = self.optimizer.params_config[param_name]
+                    sensitivity, error = self._calculate_single_discrete_sensitivity(
+                        model, param_name, param_config, continuous_params, param_bounds, n_samples, random_seed
+                    )
+                    all_sensitivities.append(sensitivity)
+                    all_errors.append(error)
+                    all_param_names.append(param_name)
+            
+            # 4. Normalize all sensitivities to same scale
+            if all_sensitivities and max(all_sensitivities) > 0:
+                norm_factor = max(all_sensitivities)
+                all_sensitivities = [s / norm_factor for s in all_sensitivities]
+                all_errors = [e / norm_factor for e in all_errors]
+            
+            logger.debug(f"Mixed sensitivity analysis completed: {len(all_param_names)} total parameters")
+            return all_sensitivities, all_errors, all_param_names
+            
+        except Exception as e:
+            logger.error(f"Error in mixed sensitivity calculation: {e}")
+            # Fallback: return continuous parameters only
+            if continuous_params:
+                cont_sensitivities, cont_errors = self._calculate_variance_sensitivity(
+                    model, continuous_params, param_bounds, n_samples, random_seed
+                )
+                return cont_sensitivities, cont_errors, continuous_params
+            else:
+                return [], [], []
+    
+    def _calculate_single_discrete_sensitivity(self, model, param_name, param_config, continuous_params, param_bounds, n_samples, random_seed):
+        """
+        Calculate sensitivity for a single discrete or categorical parameter.
+        
+        Uses exhaustive enumeration approach - tests all possible values and measures
+        the variance in model predictions.
+        """
+        try:
+            # Get possible values for this parameter
+            if param_config["type"] == "discrete":
+                if "values" in param_config:
+                    possible_values = param_config["values"]
+                else:
+                    # Generate integer values from bounds
+                    bounds = param_config["bounds"]
+                    possible_values = list(range(int(bounds[0]), int(bounds[1]) + 1))
+            else:  # categorical
+                possible_values = param_config["values"]
+            
+            if len(possible_values) <= 1:
+                return 0.0, 0.0  # No sensitivity if only one value possible
+            
+            # Set up base point for other parameters
+            np.random.seed(random_seed)
+            
+            # Multiple runs for statistical robustness
+            sensitivity_estimates = []
+            n_bootstrap = min(10, max(3, n_samples // 100))  # Adaptive bootstrap
+            
+            for bootstrap_run in range(n_bootstrap):
+                predictions_per_value = []
+                
+                for discrete_value in possible_values:
+                    # Generate random samples with this discrete value fixed
+                    n_test_points = max(20, n_samples // (len(possible_values) * n_bootstrap))
+                    predictions = []
+                    
+                    for _ in range(n_test_points):
+                        # Create test point
+                        test_point = {param_name: discrete_value}
+                        
+                        # Random values for continuous parameters
+                        for i, cont_param in enumerate(continuous_params):
+                            bounds = param_bounds[i]
+                            test_point[cont_param] = np.random.uniform(bounds[0], bounds[1])
+                        
+                        # Fixed values for other discrete parameters
+                        for other_param, other_config in self.optimizer.params_config.items():
+                            if other_param != param_name and other_param not in continuous_params:
+                                if other_config["type"] == "discrete":
+                                    if "values" in other_config:
+                                        test_point[other_param] = other_config["values"][0]
+                                    else:
+                                        test_point[other_param] = int(np.mean(other_config["bounds"]))
+                                elif other_config["type"] == "categorical":
+                                    test_point[other_param] = other_config["values"][0]
+                        
+                        # Get model prediction
+                        try:
+                            pred_mean, pred_var = model.predict(test_point)
+                            if hasattr(pred_mean, 'item'):
+                                prediction = pred_mean.item()
+                            else:
+                                prediction = float(pred_mean)
+                            predictions.append(prediction)
+                        except Exception:
+                            predictions.append(0.0)
+                    
+                    # Calculate mean prediction for this discrete value
+                    if predictions:
+                        predictions_per_value.append(np.mean(predictions))
+                
+                # Calculate sensitivity as variance across discrete values
+                if len(predictions_per_value) > 1:
+                    sensitivity = np.var(predictions_per_value)
+                    sensitivity_estimates.append(sensitivity)
+            
+            # Calculate final sensitivity and error
+            if sensitivity_estimates:
+                mean_sensitivity = np.mean(sensitivity_estimates)
+                std_error = np.std(sensitivity_estimates) / np.sqrt(len(sensitivity_estimates))
+            else:
+                mean_sensitivity = 0.0
+                std_error = 0.0
+            
+            return mean_sensitivity, std_error
+            
+        except Exception as e:
+            logger.debug(f"Error calculating discrete sensitivity for {param_name}: {e}")
+            return 0.0, 0.0
+
     def _plot_sensitivity_results(self, ax, continuous_params, values, errors, response_name, method, ylabel):
         """
         Plot sensitivity results with error bars and formatting.
@@ -4057,6 +4253,14 @@ class SimplePlotManager:
                 )
                 self._plot_sensitivity_results(
                     ax, continuous_params, delta_indices, errors, response_name, method, "Delta Moment-Independent Index"
+                )
+
+            elif method == "mixed":
+                sensitivities, errors, param_names = self._calculate_mixed_sensitivity(
+                    model, continuous_params, param_bounds, n_samples, random_seed
+                )
+                self._plot_sensitivity_results(
+                    ax, param_names, sensitivities, errors, response_name, method, "Normalized Sensitivity Index"
                 )
 
             else:
@@ -4337,16 +4541,37 @@ class SimplePlotManager:
             # Create KDE from experimental data points
             points = np.vstack([x1_data, x2_data])
             
-            # Handle edge case where all points are identical
-            if np.all(points[0] == points[0][0]) and np.all(points[1] == points[1][0]):
-                # All points are at the same location, create a simple peak
-                center_x, center_y = points[0][0], points[1][0]
-                density_grid = np.exp(-((X1 - center_x)**2 + (X2 - center_y)**2) / (0.1 * (x1_bounds[1] - x1_bounds[0])**2))
+            # Check for insufficient data variation
+            x1_var = np.var(points[0])
+            x2_var = np.var(points[1])
+            min_variance_threshold = 1e-10
+            
+            # Handle edge cases where data has insufficient variation
+            if (np.all(points[0] == points[0][0]) and np.all(points[1] == points[1][0])) or len(points[0]) < 2:
+                # All points are at the same location or too few points, create a simple peak
+                center_x, center_y = np.mean(points[0]), np.mean(points[1])
+                sigma = 0.1 * min(x1_bounds[1] - x1_bounds[0], x2_bounds[1] - x2_bounds[0])
+                density_grid = np.exp(-((X1 - center_x)**2 + (X2 - center_y)**2) / (2 * sigma**2))
+            elif x1_var < min_variance_threshold or x2_var < min_variance_threshold:
+                # One dimension has no variation, use simple Gaussian around the mean
+                center_x, center_y = np.mean(points[0]), np.mean(points[1])
+                # Use larger sigma for dimensions with no variation
+                sigma_x = max(np.sqrt(x1_var), 0.1 * (x1_bounds[1] - x1_bounds[0]))
+                sigma_y = max(np.sqrt(x2_var), 0.1 * (x2_bounds[1] - x2_bounds[0]))
+                density_grid = np.exp(-((X1 - center_x)**2 / (2 * sigma_x**2) + (X2 - center_y)**2 / (2 * sigma_y**2)))
             else:
-                kde = gaussian_kde(points)
-                # Evaluate KDE on grid
-                grid_points = np.vstack([X1.ravel(), X2.ravel()])
-                density_grid = kde(grid_points).reshape(X1.shape)
+                try:
+                    kde = gaussian_kde(points)
+                    # Evaluate KDE on grid
+                    grid_points = np.vstack([X1.ravel(), X2.ravel()])
+                    density_grid = kde(grid_points).reshape(X1.shape)
+                except np.linalg.LinAlgError:
+                    # KDE failed due to singular covariance matrix, fallback to simple Gaussian
+                    logger.warning("KDE failed due to singular covariance matrix, using fallback Gaussian approximation")
+                    center_x, center_y = np.mean(points[0]), np.mean(points[1])
+                    sigma_x = max(np.std(points[0]), 0.1 * (x1_bounds[1] - x1_bounds[0]))
+                    sigma_y = max(np.std(points[1]), 0.1 * (x2_bounds[1] - x2_bounds[0]))
+                    density_grid = np.exp(-((X1 - center_x)**2 / (2 * sigma_x**2) + (X2 - center_y)**2 / (2 * sigma_y**2)))
 
             # Create the data density visualization
             self._create_uncertainty_visualization(

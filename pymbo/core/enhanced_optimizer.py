@@ -21,7 +21,7 @@ Performance Benefits:
 - Provides better progress tracking and debugging
 
 Author: Multi-Objective Optimization Laboratory  
-Version: 1.0.0 - Enhanced with Efficient Data Management
+Version: 3.6.6 - Enhanced with Efficient Data Management
 """
 
 import logging

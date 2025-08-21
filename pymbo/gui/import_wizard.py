@@ -13,25 +13,6 @@ from typing import Dict, List, Any, Optional, Tuple, Set
 from pathlib import Path
 import logging
 
-# Import modern light theme constants
-try:
-    from .gui import ModernTheme
-except ImportError:
-    # Fallback light theme if import fails
-    class ModernTheme:
-        PRIMARY = "#1976D2"
-        SECONDARY = "#757575"
-        SUCCESS = "#4CAF50"
-        WARNING = "#FF9800"
-        ERROR = "#F44336"
-        BACKGROUND = "#FAFAFA"
-        SURFACE = "#FFFFFF"
-        SURFACE_VARIANT = "#F5F5F5"
-        SURFACE_ELEVATED = "#FFFFFF"
-        TEXT_PRIMARY = "#212121"
-        TEXT_SECONDARY = "#757575"
-        BORDER = "#E0E0E0"
-
 
 class ParameterTypeDetector:
     """Utility class for detecting parameter types from data."""
@@ -496,10 +477,39 @@ First few rows:"""
                 max_entry = ttk.Entry(bounds_frame, textvariable=max_var, width=10)
                 max_entry.pack(side=tk.LEFT, padx=(5, 0))
                 
+                # Goal selection for parameters
+                goal_frame = ttk.Frame(col_frame)
+                goal_frame.pack(fill=tk.X, padx=10, pady=5)
+                
+                ttk.Label(goal_frame, text="Goal:").pack(side=tk.LEFT)
+                
+                param_goal_var = tk.StringVar(value="None")
+                param_goal_combo = ttk.Combobox(goal_frame, textvariable=param_goal_var,
+                                              values=["None", "Maximize", "Minimize", "Target", "Range"],
+                                              state="readonly", width=12)
+                param_goal_combo.pack(side=tk.LEFT, padx=(10, 20))
+                
+                # Target value entry (initially disabled)
+                ttk.Label(goal_frame, text="Target:").pack(side=tk.LEFT)
+                param_target_var = tk.StringVar()
+                param_target_entry = ttk.Entry(goal_frame, textvariable=param_target_var, width=10, state="disabled")
+                param_target_entry.pack(side=tk.LEFT, padx=(5, 0))
+                
+                # Bind goal change to enable/disable target entry
+                def on_param_goal_change(event, target_entry=param_target_entry, goal_var=param_goal_var):
+                    if goal_var.get() in ["Target", "Range"]:
+                        target_entry.config(state="normal")
+                    else:
+                        target_entry.config(state="disabled")
+                        
+                param_goal_combo.bind("<<ComboboxSelected>>", on_param_goal_change)
+                
                 self.param_config_vars[col] = {
                     "type": type_var,
                     "min": min_var,
                     "max": max_var,
+                    "goal": param_goal_var,
+                    "target": param_target_var,
                     "info": param_info
                 }
             else:
@@ -508,15 +518,44 @@ First few rows:"""
                 cats_text = ", ".join(str(c) for c in param_info.get("display_categories", param_info.get("categories", [])))
                 ttk.Label(bounds_frame, text=cats_text, width=50, anchor=tk.W).pack(side=tk.LEFT, padx=(5, 0))
                 
+                # Goal selection for categorical parameters
+                goal_frame = ttk.Frame(col_frame)
+                goal_frame.pack(fill=tk.X, padx=10, pady=5)
+                
+                ttk.Label(goal_frame, text="Goal:").pack(side=tk.LEFT)
+                
+                param_goal_var = tk.StringVar(value="None")
+                param_goal_combo = ttk.Combobox(goal_frame, textvariable=param_goal_var,
+                                              values=["None", "Maximize", "Minimize", "Target", "Range"],
+                                              state="readonly", width=12)
+                param_goal_combo.pack(side=tk.LEFT, padx=(10, 20))
+                
+                # Target value entry (initially disabled)
+                ttk.Label(goal_frame, text="Target:").pack(side=tk.LEFT)
+                param_target_var = tk.StringVar()
+                param_target_entry = ttk.Entry(goal_frame, textvariable=param_target_var, width=10, state="disabled")
+                param_target_entry.pack(side=tk.LEFT, padx=(5, 0))
+                
+                # Bind goal change to enable/disable target entry
+                def on_param_goal_change(event, target_entry=param_target_entry, goal_var=param_goal_var):
+                    if goal_var.get() in ["Target", "Range"]:
+                        target_entry.config(state="normal")
+                    else:
+                        target_entry.config(state="disabled")
+                        
+                param_goal_combo.bind("<<ComboboxSelected>>", on_param_goal_change)
+                
                 self.param_config_vars[col] = {
                     "type": type_var,
                     "categories": param_info["categories"],
+                    "goal": param_goal_var,
+                    "target": param_target_var,
                     "info": param_info
                 }
             
             # Info label
             ttk.Label(col_frame, text=param_info["note"], font=('Arial', 9), 
-                     foreground=ModernTheme.TEXT_SECONDARY).pack(anchor=tk.W, padx=10, pady=(0, 10))
+                     foreground='gray').pack(anchor=tk.W, padx=10, pady=(0, 10))
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -549,7 +588,7 @@ First few rows:"""
             
             goal_var = tk.StringVar(value="Maximize")
             goal_combo = ttk.Combobox(goal_frame, textvariable=goal_var,
-                                    values=["Maximize", "Minimize", "Target"],
+                                    values=["Maximize", "Minimize", "Target", "Range"],
                                     state="readonly", width=12)
             goal_combo.pack(side=tk.LEFT, padx=(10, 0))
             
@@ -560,7 +599,7 @@ First few rows:"""
             if len(col_data) > 0:
                 range_text = f"Range: {col_data.min():.3f} to {col_data.max():.3f}"
                 ttk.Label(col_frame, text=range_text, font=('Arial', 9), 
-                         foreground=ModernTheme.TEXT_SECONDARY).pack(anchor=tk.W, padx=10, pady=(0, 10))
+                         foreground='gray').pack(anchor=tk.W, padx=10, pady=(0, 10))
         
         canvas.pack(side="left", fill="both", expand=True) 
         scrollbar.pack(side="right", fill="y")
@@ -578,11 +617,11 @@ First few rows:"""
         
         if not issues:
             ttk.Label(self.content_frame, text="✅ No data validation issues found!", 
-                     font=('Arial', 12), foreground=ModernTheme.TEXT_SUCCESS).pack(pady=20)
+                     font=('Arial', 12), foreground='green').pack(pady=20)
             self.validated_data = clean_data
         else:
             ttk.Label(self.content_frame, text=f"⚠️ Found {len(issues)} validation issues:", 
-                     font=('Arial', 12), foreground=ModernTheme.TEXT_WARNING).pack(pady=10)
+                     font=('Arial', 12), foreground='orange').pack(pady=10)
             
             # Issues frame
             issues_frame = ttk.LabelFrame(self.content_frame, text="Issues Found")
@@ -748,30 +787,72 @@ The data will be loaded into the optimizer when you proceed to the main interfac
     def finish_wizard(self):
         """Finish the wizard and return configuration."""
         try:
+            print("🔥 IMPORT WIZARD FINISHING 🔥")
+            
             # Build parameter configuration
             self.parameter_config = {}
+            print(f"🔥 param_config_vars: {getattr(self, 'param_config_vars', {})}")
             for col, config in getattr(self, 'param_config_vars', {}).items():
                 param_type = config['type'].get()
+                param_goal = config.get('goal', tk.StringVar(value="None")).get()
+                param_target = config.get('target', tk.StringVar()).get().strip()
+                print(f"🔥 Parameter '{col}': type={param_type}, goal='{param_goal}', target='{param_target}', config={config}")
+                
                 if param_type in ['continuous', 'discrete']:
-                    self.parameter_config[col] = {
+                    param_config = {
                         "type": param_type,
                         "bounds": [float(config['min'].get()), float(config['max'].get())],
-                        "goal": "None"
+                        "goal": param_goal
                     }
+                    
+                    # Add target/range value if specified
+                    if param_goal == "Target" and param_target:
+                        try:
+                            param_config["target_value"] = float(param_target)
+                        except ValueError:
+                            print(f"🔥 Warning: Invalid target value '{param_target}' for parameter '{col}'")
+                    elif param_goal == "Range" and param_target:
+                        try:
+                            # Parse range format like "min,max" or "[min,max]"
+                            range_str = param_target.strip('[]')
+                            if ',' in range_str:
+                                min_val, max_val = [float(x.strip()) for x in range_str.split(',')]
+                                param_config["min_value"] = min_val
+                                param_config["max_value"] = max_val
+                            else:
+                                print(f"🔥 Warning: Invalid range format '{param_target}' for parameter '{col}'")
+                        except ValueError:
+                            print(f"🔥 Warning: Invalid range value '{param_target}' for parameter '{col}'")
+                    
+                    self.parameter_config[col] = param_config
+                    print(f"🔥 Created parameter config for '{col}': {self.parameter_config[col]}")
                 else:
-                    self.parameter_config[col] = {
+                    param_config = {
                         "type": "categorical", 
                         "categories": config['categories'],
                         "bounds": [0, len(config['categories']) - 1],
-                        "goal": "None"
+                        "goal": param_goal
                     }
+                    
+                    # Add target value for categorical parameters if specified
+                    if param_goal == "Target" and param_target:
+                        if param_target in config['categories']:
+                            param_config["target_value"] = param_target
+                        else:
+                            print(f"🔥 Warning: Target value '{param_target}' not in categories for parameter '{col}'")
+                    
+                    self.parameter_config[col] = param_config
+                    print(f"🔥 Created categorical parameter config for '{col}': {self.parameter_config[col]}")
             
             # Build response configuration
             self.response_config = {}
+            print(f"🔥 response_config_vars: {getattr(self, 'response_config_vars', {})}")
             for col, config in getattr(self, 'response_config_vars', {}).items():
+                goal = config['goal'].get()
                 self.response_config[col] = {
-                    "goal": config['goal'].get()
+                    "goal": goal
                 }
+                print(f"🔥 Response '{col}': goal='{goal}', config={self.response_config[col]}")
             
             # Store final data
             if self.validated_data is None:

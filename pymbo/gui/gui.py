@@ -54,6 +54,14 @@ except ImportError as e:
     logging.warning(f"GPU acceleration widget not available: {e}")
     GPU_ACCELERATION_AVAILABLE = False
 
+# Import Goal Impact Dashboard
+try:
+    from .goal_impact_dashboard import create_goal_impact_dashboard
+    GOAL_IMPACT_DASHBOARD_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Goal Impact Dashboard not available: {e}")
+    GOAL_IMPACT_DASHBOARD_AVAILABLE = False
+
 # Import enhanced plot controls
 try:
     from .plot_controls import (
@@ -96,14 +104,16 @@ try:
         create_model_diagnostics_control_panel,
         ModelDiagnosticsControlPanel,
     )
+    from .sensitivity_analysis_controls import (
+        create_sensitivity_analysis_control_panel,
+        SensitivityAnalysisControlPanel,
+    )
     
-    # Import 3D surface controls module using importlib due to filename starting with number
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("surfaces_controls", "pymbo/gui/surface_3d_controls.py")
-    surfaces_controls_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(surfaces_controls_module)
-    create_3d_surface_control_panel = surfaces_controls_module.create_3d_surface_control_panel
-    SurfacePlotControlPanel = surfaces_controls_module.SurfacePlotControlPanel
+    # Import 3D surface controls module using proper Python import
+    from .surface_3d_controls import (
+        create_3d_surface_control_panel,
+        SurfacePlotControlPanel,
+    )
 
     ENHANCED_CONTROLS_AVAILABLE = True
     COMPACT_CONTROLS_AVAILABLE = True
@@ -116,6 +126,7 @@ try:
     PARALLEL_COORDINATES_CONTROLS_AVAILABLE = True
     UNCERTAINTY_ANALYSIS_CONTROLS_AVAILABLE = True
     MODEL_DIAGNOSTICS_CONTROLS_AVAILABLE = True
+    SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE = True
 except ImportError:
     ENHANCED_CONTROLS_AVAILABLE = False
     COMPACT_CONTROLS_AVAILABLE = False
@@ -128,9 +139,10 @@ except ImportError:
     PARALLEL_COORDINATES_CONTROLS_AVAILABLE = False
     UNCERTAINTY_ANALYSIS_CONTROLS_AVAILABLE = False
     MODEL_DIAGNOSTICS_CONTROLS_AVAILABLE = False
+    SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE = False
 
 # Configuration constants
-APP_TITLE = "Multi-Objective Optimization Laboratory v3.2.0"
+APP_TITLE = "Multi-Objective Optimization Laboratory v3.6.6"
 MIN_WINDOW_WIDTH = 1200
 MIN_WINDOW_HEIGHT = 800
 DEFAULT_WINDOW_WIDTH = 1400
@@ -150,67 +162,38 @@ logger = logging.getLogger(__name__)
 
 
 class ModernTheme:
-    """Modern light theme color scheme and styling constants for academic software"""
+    """Modern color scheme and styling constants for the application"""
 
-    # Core Light Theme Color Palette - Professional Academic Design
-    PRIMARY = "#1976D2"  # Professional blue for primary actions and highlights
-    PRIMARY_DARK = "#1565C0"  # Deeper blue for hover states and active elements  
-    PRIMARY_LIGHT = "#BBDEFB"  # Light blue for subtle highlights and selections
+    # Color Palette - Modern Material Design inspired
+    PRIMARY = "#1976D2"  # Professional blue
+    PRIMARY_DARK = "#1565C0"  # Darker blue for hover states
+    PRIMARY_LIGHT = "#E3F2FD"  # Light blue for backgrounds
 
-    SECONDARY = "#757575"  # Professional gray accent for secondary actions
-    SECONDARY_DARK = "#424242"  # Darker gray for hover states
-    SECONDARY_LIGHT = "#E0E0E0"  # Light gray for subtle accents
+    SECONDARY = "#FF6F00"  # Orange accent
+    SECONDARY_DARK = "#E65100"  # Darker orange
+    SECONDARY_LIGHT = "#FFF3E0"  # Light orange
 
-    SUCCESS = "#4CAF50"  # Professional green for success states and confirmations
-    SUCCESS_LIGHT = "#C8E6C9"  # Light green for subtle success indicators
+    SUCCESS = "#2E7D32"  # Green for success states
+    SUCCESS_LIGHT = "#E8F5E8"  # Light green
 
-    WARNING = "#FF9800"  # Academic orange for warnings and important notices
-    WARNING_LIGHT = "#FFE0B2"  # Light orange warning indicator
+    WARNING = "#F57C00"  # Amber for warnings
+    WARNING_LIGHT = "#FFF8E1"  # Light amber
 
-    ERROR = "#F44336"  # Clear red for errors and critical alerts
-    ERROR_LIGHT = "#FFCDD2"  # Light red for error backgrounds
+    ERROR = "#C62828"  # Red for errors
+    ERROR_LIGHT = "#FFEBEE"  # Light red
 
-    # Light Theme Base Colors - Clean Academic Palette
-    SURFACE = "#FFFFFF"  # Primary surface color for cards and panels
-    SURFACE_VARIANT = "#F5F5F5"  # Secondary surface for nested components
-    SURFACE_ELEVATED = "#FFFFFF"  # Elevated surfaces like dialogs and menus
-    
-    BACKGROUND = "#FAFAFA"  # Clean background for main application
-    BACKGROUND_VARIANT = "#F0F0F0"  # Variant background for contrast areas
-    
-    CARD = "#FFFFFF"  # Card backgrounds with subtle elevation
-    BORDER = "#E0E0E0"  # Border color for visual separation
-    DIVIDER = "#E0E0E0"  # Divider lines and subtle separations
-    
-    # Advanced border styles for modern depth
-    BORDER_SUBTLE = "#F0F0F0"  # Very subtle borders
-    BORDER_FOCUS = "#1976D2"  # Focus rings and active borders
-    BORDER_ERROR = "#F44336"  # Error state borders
+    # Neutral colors
+    SURFACE = "#FFFFFF"  # White surface
+    BACKGROUND = "#FAFAFA"  # Light gray background
+    CARD = "#F5F7FA"  # Card background
+    BORDER = "#E0E0E0"  # Border color
+    DIVIDER = "#EEEEEE"  # Divider color
 
-    # Professional Text Colors for Academic Readability
-    TEXT_PRIMARY = "#212121"  # High contrast primary text for maximum readability
-    TEXT_SECONDARY = "#757575"  # Secondary text for descriptions and labels
-    TEXT_TERTIARY = "#9E9E9E"  # Tertiary text for hints and subtle information
-    TEXT_DISABLED = "#BDBDBD"  # Disabled text state
-    TEXT_HINT = "#9E9E9E"  # Placeholder and hint text
-    
-    # Accent text colors for interactive elements
-    TEXT_ACCENT = "#1976D2"  # Links and interactive text
-    TEXT_SUCCESS = "#4CAF50"  # Success message text
-    TEXT_WARNING = "#FF9800"  # Warning message text
-    TEXT_ERROR = "#F44336"  # Error message text
-
-    # Modern Academic Interface Colors
-    ACCENT = "#7B1FA2"  # Purple accent for special highlights
-    ACCENT_VARIANT = "#9C27B0"  # Variant accent for depth
-    
-    # Overlay colors for modern effects
-    OVERLAY_LIGHT = "rgba(0, 0, 0, 0.05)"  # Light overlay for hover effects
-    OVERLAY_DARK = "rgba(0, 0, 0, 0.15)"  # Dark overlay for modals and dropdowns
-    
-    # Gradient definitions for modern visual depth
-    GRADIENT_PRIMARY = "linear-gradient(135deg, #1976D2, #1565C0)"
-    GRADIENT_SURFACE = "linear-gradient(135deg, #FFFFFF, #F5F5F5)"
+    # Text colors
+    TEXT_PRIMARY = "#212121"  # Primary text
+    TEXT_SECONDARY = "#757575"  # Secondary text
+    TEXT_DISABLED = "#BDBDBD"  # Disabled text
+    TEXT_HINT = "#9E9E9E"  # Hint text
 
     # Modern fonts with fallbacks
     @staticmethod
@@ -229,82 +212,18 @@ class ModernTheme:
                 continue
         return ("Arial", size, weight)
 
-    # Modern Academic Interface Styles
+    # Common styles
     BUTTON_STYLE = {
         "relief": "flat",
         "borderwidth": 0,
-        "pady": 12,  # Increased padding for better touch targets
-        "padx": 20,  # More horizontal padding for modern look
+        "pady": 8,
+        "padx": 16,
         "cursor": "hand2",
-        "font": ("Segoe UI", 10, "normal"),
     }
 
-    # Enhanced button styles for different semantic meanings
-    BUTTON_STYLE_PRIMARY = {
-        **BUTTON_STYLE,
-        "background": PRIMARY,
-        "foreground": "#FFFFFF",
-        "activebackground": PRIMARY_DARK,
-        "activeforeground": "#FFFFFF",
-    }
-    
-    BUTTON_STYLE_SECONDARY = {
-        **BUTTON_STYLE,
-        "background": SURFACE_VARIANT,
-        "foreground": TEXT_PRIMARY,
-        "activebackground": SURFACE_ELEVATED,
-        "activeforeground": TEXT_PRIMARY,
-        "highlightbackground": BORDER,
-        "highlightcolor": BORDER_FOCUS,
-        "highlightthickness": 1,
-    }
+    CARD_STYLE = {"relief": "flat", "borderwidth": 1, "pady": 16, "padx": 16}
 
-    # Modern card style with subtle elevation
-    CARD_STYLE = {
-        "relief": "flat", 
-        "borderwidth": 1, 
-        "pady": 20, 
-        "padx": 20,
-        "bg": SURFACE,
-        "highlightbackground": BORDER_SUBTLE,
-        "highlightthickness": 1,
-    }
-
-    # Professional input field styling
-    INPUT_STYLE = {
-        "relief": "flat", 
-        "borderwidth": 2, 
-        "pady": 10, 
-        "padx": 14,
-        "bg": SURFACE_VARIANT,
-        "fg": TEXT_PRIMARY,
-        "selectbackground": PRIMARY_LIGHT,
-        "selectforeground": BACKGROUND,
-        "insertbackground": TEXT_PRIMARY,
-    }
-    
-    # Modern frame styles for better visual hierarchy
-    FRAME_STYLE_MAIN = {
-        "bg": BACKGROUND,
-        "relief": "flat",
-        "borderwidth": 0,
-    }
-    
-    FRAME_STYLE_SURFACE = {
-        "bg": SURFACE,
-        "relief": "flat", 
-        "borderwidth": 1,
-        "highlightbackground": BORDER_SUBTLE,
-        "highlightthickness": 1,
-    }
-    
-    FRAME_STYLE_ELEVATED = {
-        "bg": SURFACE_ELEVATED,
-        "relief": "flat",
-        "borderwidth": 1,
-        "highlightbackground": BORDER,
-        "highlightthickness": 1,
-    }
+    INPUT_STYLE = {"relief": "solid", "borderwidth": 1, "pady": 8, "padx": 12}
 
 
 class SimpleOptimizerApp(tk.Tk):
@@ -321,12 +240,12 @@ class SimpleOptimizerApp(tk.Tk):
         super().__init__()
 
         # Configure responsive window appearance
-        self.title("Multi-Objective Optimization Laboratory v3.2.0")
+        self.title("Multi-Objective Optimization Laboratory v3.6.6")
         self._setup_responsive_window()
         self.configure(bg=ModernTheme.BACKGROUND)
 
-        # Center window on screen after responsive setup
-        self._center_window()
+        # Skip centering for fullscreen mode
+        # self._center_window()  # Not needed in fullscreen
         
         # Setup cleanup on window close
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -393,28 +312,40 @@ class SimpleOptimizerApp(tk.Tk):
         self._setup_main_window()
 
     def _setup_responsive_window(self):
-        """Configure responsive window sizing based on screen resolution"""
+        """Configure window to open in fullscreen mode"""
         # Get screen dimensions
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         
-        # Calculate responsive dimensions (80% of screen, but with constraints)
-        responsive_width = min(max(int(screen_width * 0.8), 1000), screen_width - 100)
-        responsive_height = min(max(int(screen_height * 0.8), 700), screen_height - 100)
+        # Set window to fullscreen mode
+        self.state('zoomed')  # Windows fullscreen
         
-        # Set responsive geometry
-        self.geometry(f"{responsive_width}x{responsive_height}")
+        # Alternative method for cross-platform fullscreen
+        try:
+            self.attributes('-zoomed', True)  # Linux/Unix
+        except tk.TclError:
+            pass
         
-        # Set minimum size - responsive to very small screens
+        try:
+            self.attributes('-fullscreen', True)  # Alternative fullscreen
+        except tk.TclError:
+            # Fallback to manual fullscreen geometry if attributes don't work
+            self.geometry(f"{screen_width}x{screen_height}+0+0")
+        
+        # Set minimum size - keep responsive to very small screens for safety
         min_width = min(900, int(screen_width * 0.6))
         min_height = min(600, int(screen_height * 0.6))
         self.minsize(min_width, min_height)
         
-        # Make window resizable
+        # Make window resizable (user can exit fullscreen if needed)
         self.resizable(True, True)
         
-        logger.info(f"Responsive window setup: {responsive_width}x{responsive_height}, "
-                   f"min: {min_width}x{min_height}, screen: {screen_width}x{screen_height}")
+        # Add ESC key binding to exit fullscreen
+        self.bind('<Escape>', self._toggle_fullscreen)
+        self.bind('<F11>', self._toggle_fullscreen)
+        
+        logger.info(f"Fullscreen window setup: {screen_width}x{screen_height}, "
+                   f"min: {min_width}x{min_height}")
 
     def _center_window(self):
         """Center the window on the screen"""
@@ -424,6 +355,41 @@ class SimpleOptimizerApp(tk.Tk):
         pos_x = (self.winfo_screenwidth() // 2) - (width // 2)
         pos_y = (self.winfo_screenheight() // 2) - (height // 2)
         self.geometry(f"+{pos_x}+{pos_y}")
+    
+    def _toggle_fullscreen(self, event=None):
+        """Toggle between fullscreen and windowed mode"""
+        try:
+            # Check current state and toggle
+            current_state = self.state()
+            if current_state == 'zoomed' or self.attributes('-fullscreen'):
+                # Exit fullscreen
+                self.state('normal')
+                try:
+                    self.attributes('-fullscreen', False)
+                except tk.TclError:
+                    pass
+                try:
+                    self.attributes('-zoomed', False)
+                except tk.TclError:
+                    pass
+                # Set to responsive window size
+                screen_width = self.winfo_screenwidth()
+                screen_height = self.winfo_screenheight()
+                responsive_width = min(max(int(screen_width * 0.8), 1000), screen_width - 100)
+                responsive_height = min(max(int(screen_height * 0.8), 700), screen_height - 100)
+                self.geometry(f"{responsive_width}x{responsive_height}")
+                self._center_window()
+                logger.info("Exited fullscreen mode")
+            else:
+                # Enter fullscreen
+                self.state('zoomed')
+                try:
+                    self.attributes('-fullscreen', True)
+                except tk.TclError:
+                    pass
+                logger.info("Entered fullscreen mode")
+        except Exception as e:
+            logger.warning(f"Error toggling fullscreen: {e}")
 
     def _calculate_responsive_figsize(self, base_width: int = 8, base_height: int = 8, 
                                      aspect_ratio: float = 1.0) -> Tuple[float, float]:
@@ -495,22 +461,19 @@ class SimpleOptimizerApp(tk.Tk):
             logger.warning(f"Error resizing figure: {e}")
 
     def _configure_modern_style(self):
-        """Configure modern dark theme TTK styles for academic software"""
+        """Configure modern TTK styles for the application"""
         style = ttk.Style()
-        
-        # Set the overall theme base
-        style.theme_use('default')  # Use default as base for cleaner light colors
 
-        # Configure modern primary button style
+        # Configure modern button style - fixed sizing
         style.configure(
             "Modern.TButton",
             background=ModernTheme.PRIMARY,
-            foreground="#FFFFFF",
-            font=ModernTheme.get_font(10, "normal"),
+            foreground="white",
+            font=ModernTheme.get_font(10, "normal"),  # Fixed font size
             borderwidth=0,
             focuscolor="none",
-            padding=(20, 12),  # More generous padding
-            relief="flat",
+            padding=(16, 8),  # Fixed padding - won't scale with window
+            width=10,  # Fixed minimum width for consistency
         )
 
         style.map(
@@ -518,157 +481,104 @@ class SimpleOptimizerApp(tk.Tk):
             background=[
                 ("active", ModernTheme.PRIMARY_DARK),
                 ("pressed", ModernTheme.PRIMARY_DARK),
-                ("focus", ModernTheme.PRIMARY_DARK),
             ],
-            foreground=[
-                ("active", "#FFFFFF"),
-                ("pressed", "#FFFFFF"),
-                ("focus", "#FFFFFF"),
-            ],
-            relief=[("pressed", "flat"), ("focus", "flat")],
         )
 
-        # Configure secondary button style for dark theme
+        # Configure secondary button style - fixed sizing
         style.configure(
             "Secondary.TButton",
-            background=ModernTheme.SURFACE_VARIANT,
-            foreground=ModernTheme.TEXT_PRIMARY,
-            font=ModernTheme.get_font(10, "normal"),
+            background=ModernTheme.SURFACE,
+            foreground=ModernTheme.PRIMARY,
+            font=ModernTheme.get_font(10, "normal"),  # Fixed font size
             borderwidth=1,
-            bordercolor=ModernTheme.BORDER,
             focuscolor="none",
-            padding=(20, 12),
-            relief="flat",
+            padding=(16, 8),  # Fixed padding - won't scale with window
+            width=10,  # Fixed minimum width for consistency
         )
 
         style.map(
             "Secondary.TButton",
             background=[
-                ("active", ModernTheme.SURFACE_ELEVATED),
-                ("pressed", ModernTheme.SURFACE_ELEVATED),
-                ("focus", ModernTheme.SURFACE_ELEVATED),
+                ("active", ModernTheme.PRIMARY_LIGHT),
+                ("pressed", ModernTheme.PRIMARY_LIGHT),
             ],
             bordercolor=[
-                ("active", ModernTheme.BORDER_FOCUS),
-                ("pressed", ModernTheme.BORDER_FOCUS),
-                ("focus", ModernTheme.BORDER_FOCUS),
-            ],
-            foreground=[
-                ("active", ModernTheme.TEXT_PRIMARY),
-                ("pressed", ModernTheme.TEXT_PRIMARY),
-                ("focus", ModernTheme.TEXT_PRIMARY),
+                ("active", ModernTheme.PRIMARY),
+                ("pressed", ModernTheme.PRIMARY),
             ],
         )
 
-        # Configure dark theme notebook style
+        # Configure modern notebook style
         style.configure(
-            "Modern.TNotebook", 
-            background=ModernTheme.BACKGROUND, 
-            borderwidth=0,
-            tabmargins=[2, 5, 2, 0],  # Better tab spacing
+            "Modern.TNotebook", background=ModernTheme.BACKGROUND, borderwidth=0
         )
 
         style.configure(
             "Modern.TNotebook.Tab",
-            background=ModernTheme.SURFACE_VARIANT,
-            foreground=ModernTheme.TEXT_SECONDARY,
-            font=ModernTheme.get_font(10, "normal"),
-            padding=(16, 10),  # More generous tab padding
+            background="#F5F5F5",  # Light gray background
+            foreground="#000000",  # ALWAYS black text
+            font=ModernTheme.get_font(9, "bold"),  # Slightly smaller font to fit better
+            padding=(8, 6),  # Reduced padding to allow more text space
             borderwidth=0,
-            focuscolor="none",
             relief="flat",
+            # Remove fixed width to allow tabs to expand as needed
+            anchor="center",  # Center text regardless of tab width
         )
 
         style.map(
             "Modern.TNotebook.Tab",
             background=[
-                ("selected", ModernTheme.SURFACE),
-                ("active", ModernTheme.SURFACE_ELEVATED),
-                ("!selected", ModernTheme.SURFACE_VARIANT),
+                ("selected", "#E0E0E0"),  # Slightly darker gray for selected tab
+                ("active", "#EEEEEE"),    # Very light gray for hover
             ],
             foreground=[
-                ("selected", ModernTheme.TEXT_PRIMARY),
-                ("active", ModernTheme.TEXT_PRIMARY),
-                ("!selected", ModernTheme.TEXT_SECONDARY),
+                ("selected", "#000000"),  # ALWAYS black text even when selected
+                ("active", "#000000"),    # ALWAYS black text even when hovering
+                ("!selected", "#000000"), # ALWAYS black text when not selected
+                ("!active", "#000000"),   # ALWAYS black text when not hovering
             ],
             font=[
-                ("selected", ModernTheme.get_font(10, "bold")),
-                ("active", ModernTheme.get_font(10, "normal")),
-                ("!selected", ModernTheme.get_font(10, "normal")),
-            ],
-            bordercolor=[
-                ("selected", ModernTheme.BORDER_FOCUS),
-                ("active", ModernTheme.BORDER),
-                ("!selected", ModernTheme.BORDER_SUBTLE),
+                ("selected", ModernTheme.get_font(10, "bold")),  # ALWAYS bold
+                ("active", ModernTheme.get_font(10, "bold")),    # ALWAYS bold
+                ("!selected", ModernTheme.get_font(10, "bold")), # ALWAYS bold
+                ("!active", ModernTheme.get_font(10, "bold")),   # ALWAYS bold
             ],
         )
 
-        # Configure modern dark theme entry fields
+        # Configure modern entry style
         style.configure(
             "Modern.TEntry",
-            fieldbackground=ModernTheme.SURFACE_VARIANT,
+            fieldbackground=ModernTheme.SURFACE,
             foreground=ModernTheme.TEXT_PRIMARY,
-            bordercolor=ModernTheme.BORDER,
-            borderwidth=2,
-            focuscolor=ModernTheme.BORDER_FOCUS,
-            padding=(14, 10),
-            relief="flat",
-            selectbackground=ModernTheme.PRIMARY_LIGHT,
-            selectforeground=ModernTheme.BACKGROUND,
-            insertcolor=ModernTheme.TEXT_PRIMARY,
+            borderwidth=1,
+            focuscolor="none",
+            padding=(12, 8),
         )
 
         style.map(
             "Modern.TEntry",
-            fieldbackground=[
-                ("focus", ModernTheme.SURFACE_ELEVATED),
-                ("active", ModernTheme.SURFACE_ELEVATED),
-            ],
             bordercolor=[
-                ("focus", ModernTheme.BORDER_FOCUS),
+                ("focus", ModernTheme.PRIMARY),
                 ("active", ModernTheme.BORDER),
             ],
         )
 
-        # Configure modern dark theme combobox
+        # Configure modern combobox style
         style.configure(
             "Modern.TCombobox",
-            fieldbackground=ModernTheme.SURFACE_VARIANT,
-            background=ModernTheme.SURFACE_VARIANT,
+            fieldbackground=ModernTheme.SURFACE,
             foreground=ModernTheme.TEXT_PRIMARY,
-            bordercolor=ModernTheme.BORDER,
-            borderwidth=2,
-            focuscolor=ModernTheme.BORDER_FOCUS,
-            padding=(14, 10),
-            relief="flat",
-            selectbackground=ModernTheme.PRIMARY_LIGHT,
-            selectforeground=ModernTheme.BACKGROUND,
-            arrowcolor=ModernTheme.TEXT_SECONDARY,
+            borderwidth=1,
+            focuscolor="none",
+            padding=(12, 8),
         )
 
-        style.map(
-            "Modern.TCombobox",
-            fieldbackground=[
-                ("focus", ModernTheme.SURFACE_ELEVATED),
-                ("active", ModernTheme.SURFACE_ELEVATED),
-                ("readonly", ModernTheme.SURFACE_VARIANT),
-            ],
-            bordercolor=[
-                ("focus", ModernTheme.BORDER_FOCUS),
-                ("active", ModernTheme.BORDER),
-            ],
-            arrowcolor=[
-                ("active", ModernTheme.TEXT_PRIMARY),
-                ("focus", ModernTheme.TEXT_PRIMARY),
-            ],
-        )
-
-        # Configure modern label styles for dark theme
+        # Configure modern label styles
         style.configure(
             "Title.TLabel",
             background=ModernTheme.BACKGROUND,
             foreground=ModernTheme.TEXT_PRIMARY,
-            font=ModernTheme.get_font(28, "bold"),
+            font=ModernTheme.get_font(24, "bold"),
         )
 
         style.configure(
@@ -676,13 +586,6 @@ class SimpleOptimizerApp(tk.Tk):
             background=ModernTheme.BACKGROUND,
             foreground=ModernTheme.TEXT_PRIMARY,
             font=ModernTheme.get_font(16, "bold"),
-        )
-
-        style.configure(
-            "Subheading.TLabel",
-            background=ModernTheme.BACKGROUND,
-            foreground=ModernTheme.TEXT_SECONDARY,
-            font=ModernTheme.get_font(14, "normal"),
         )
 
         style.configure(
@@ -698,263 +601,91 @@ class SimpleOptimizerApp(tk.Tk):
             foreground=ModernTheme.TEXT_SECONDARY,
             font=ModernTheme.get_font(9, "normal"),
         )
-        
-        # Configure frame styles for dark theme
-        style.configure(
-            "Modern.TFrame",
-            background=ModernTheme.SURFACE,
-            borderwidth=1,
-            relief="flat",
-        )
-        
-        style.configure(
-            "Card.TFrame",
-            background=ModernTheme.SURFACE,
-            borderwidth=1,
-            relief="flat",
-        )
-        
-        # Configure default TFrame to use white background for consistency
-        style.configure(
-            "TFrame",
-            background="white",
-            relief="flat",
-        )
-        
-        # Configure default TLabel to use white background for consistency
-        style.configure(
-            "TLabel",
-            background="white",
-            foreground=ModernTheme.TEXT_PRIMARY,
-            font=ModernTheme.get_font(10, "normal"),
-        )
-        
-        # Configure default TLabelFrame to use white background for consistency
-        style.configure(
-            "TLabelFrame",
-            background="white",
-            foreground=ModernTheme.TEXT_PRIMARY,
-            relief="flat",
-        )
-        
-        # Configure explicit white background style for problematic widgets
-        style.configure(
-            "WhiteBG.TLabelFrame",
-            background="white",
-            foreground=ModernTheme.TEXT_PRIMARY,
-            relief="flat",
-        )
-        
-        style.configure(
-            "WhiteBG.TFrame",
-            background="white",
-            relief="flat",
-        )
 
     def create_modern_button(
         self, parent, text, command=None, style="primary", **kwargs
     ):
-        """Create a modern dark theme styled button with enhanced hover effects"""
-        # Base button configuration for dark theme
-        base_config = {
-            "text": text,
-            "command": command,
-            "font": ModernTheme.get_font(10, "normal"),
-            "relief": "flat",
-            "borderwidth": 0,
-            "pady": 12,
-            "padx": 20,
-            "cursor": "hand2",
-        }
-        
+        """Create a modern styled button with hover effects"""
         if style == "primary":
             btn = tk.Button(
                 parent,
+                text=text,
+                command=command,
                 bg=ModernTheme.PRIMARY,
-                fg="#FFFFFF",
+                fg="white",
+                font=ModernTheme.get_font(10, "normal"),
                 activebackground=ModernTheme.PRIMARY_DARK,
-                activeforeground="#FFFFFF",
-                **base_config,
+                activeforeground="white",
+                **ModernTheme.BUTTON_STYLE,
                 **kwargs,
             )
-            hover_color = ModernTheme.PRIMARY_DARK
-            normal_color = ModernTheme.PRIMARY
-            
         elif style == "secondary":
             btn = tk.Button(
                 parent,
-                bg=ModernTheme.SURFACE_VARIANT,
-                fg=ModernTheme.TEXT_PRIMARY,
-                activebackground=ModernTheme.SURFACE_ELEVATED,
-                activeforeground=ModernTheme.TEXT_PRIMARY,
-                highlightbackground=ModernTheme.BORDER,
-                highlightcolor=ModernTheme.BORDER_FOCUS,
-                highlightthickness=1,
-                **base_config,
+                text=text,
+                command=command,
+                bg=ModernTheme.SURFACE,
+                fg=ModernTheme.PRIMARY,
+                font=ModernTheme.get_font(10, "normal"),
+                activebackground=ModernTheme.PRIMARY_LIGHT,
+                activeforeground=ModernTheme.PRIMARY,
+                **ModernTheme.BUTTON_STYLE,
                 **kwargs,
             )
-            hover_color = ModernTheme.SURFACE_ELEVATED
-            normal_color = ModernTheme.SURFACE_VARIANT
-            
         elif style == "success":
             btn = tk.Button(
                 parent,
+                text=text,
+                command=command,
                 bg=ModernTheme.SUCCESS,
-                fg="#FFFFFF",
-                activebackground=ModernTheme.SUCCESS_LIGHT,
-                activeforeground="#FFFFFF",
-                **base_config,
+                fg="white",
+                font=ModernTheme.get_font(10, "normal"),
+                activebackground=ModernTheme.SUCCESS,
+                activeforeground="white",
+                **ModernTheme.BUTTON_STYLE,
                 **kwargs,
             )
-            hover_color = ModernTheme.SUCCESS_LIGHT
-            normal_color = ModernTheme.SUCCESS
-            
         elif style == "warning":
             btn = tk.Button(
                 parent,
+                text=text,
+                command=command,
                 bg=ModernTheme.WARNING,
-                fg="#FFFFFF",
-                activebackground=ModernTheme.WARNING_LIGHT,
-                activeforeground="#FFFFFF",
-                **base_config,
+                fg="white",
+                font=ModernTheme.get_font(10, "normal"),
+                activebackground=ModernTheme.WARNING,
+                activeforeground="white",
+                **ModernTheme.BUTTON_STYLE,
                 **kwargs,
             )
-            hover_color = ModernTheme.WARNING_LIGHT
-            normal_color = ModernTheme.WARNING
-            
-        elif style == "error":
-            btn = tk.Button(
-                parent,
-                bg=ModernTheme.ERROR,
-                fg="#FFFFFF",
-                activebackground=ModernTheme.ERROR_LIGHT,
-                activeforeground="#FFFFFF",
-                **base_config,
-                **kwargs,
-            )
-            hover_color = ModernTheme.ERROR_LIGHT
-            normal_color = ModernTheme.ERROR
-        else:
-            # Default to primary style
-            btn = tk.Button(
-                parent,
-                bg=ModernTheme.PRIMARY,
-                fg="#FFFFFF",
-                activebackground=ModernTheme.PRIMARY_DARK,
-                activeforeground="#FFFFFF",
-                **base_config,
-                **kwargs,
-            )
-            hover_color = ModernTheme.PRIMARY_DARK
-            normal_color = ModernTheme.PRIMARY
 
-        # Enhanced hover effects with smooth transitions
+        # Add hover effects
         def on_enter(e):
-            btn.config(bg=hover_color)
-            
+            if style == "primary":
+                btn.config(bg=ModernTheme.PRIMARY_DARK)
+            elif style == "secondary":
+                btn.config(bg=ModernTheme.PRIMARY_LIGHT)
+
         def on_leave(e):
-            btn.config(bg=normal_color)
+            if style == "primary":
+                btn.config(bg=ModernTheme.PRIMARY)
+            elif style == "secondary":
+                btn.config(bg=ModernTheme.SURFACE)
 
         btn.bind("<Enter>", on_enter)
         btn.bind("<Leave>", on_leave)
 
         return btn
 
-    def create_modern_card(self, parent, elevated=False, **kwargs):
-        """Create a modern dark theme card-style frame with elevation options"""
-        if elevated:
-            return tk.Frame(
-                parent,
-                bg=ModernTheme.SURFACE_ELEVATED,
-                relief="flat",
-                borderwidth=1,
-                highlightbackground=ModernTheme.BORDER,
-                highlightthickness=1,
-                **kwargs,
-            )
-        else:
-            return tk.Frame(
-                parent,
-                bg=ModernTheme.SURFACE,
-                relief="flat",
-                borderwidth=1,
-                highlightbackground=ModernTheme.BORDER_SUBTLE,
-                highlightthickness=1,
-                **kwargs,
-            )
-            
-    def create_modern_entry(self, parent, placeholder="", **kwargs):
-        """Create a modern dark theme entry field"""
-        entry = tk.Entry(
+    def create_modern_card(self, parent, **kwargs):
+        """Create a modern card-style frame"""
+        return tk.Frame(
             parent,
-            bg=ModernTheme.SURFACE_VARIANT,
-            fg=ModernTheme.TEXT_PRIMARY,
-            font=ModernTheme.get_font(10, "normal"),
+            bg=ModernTheme.SURFACE,
             relief="flat",
-            borderwidth=2,
+            borderwidth=1,
             highlightbackground=ModernTheme.BORDER,
-            highlightcolor=ModernTheme.BORDER_FOCUS,
-            highlightthickness=2,
-            selectbackground=ModernTheme.PRIMARY_LIGHT,
-            selectforeground=ModernTheme.BACKGROUND,
-            insertbackground=ModernTheme.TEXT_PRIMARY,
-            **kwargs,
-        )
-        
-        # Add focus effects
-        def on_focus_in(e):
-            entry.config(
-                highlightbackground=ModernTheme.BORDER_FOCUS,
-                bg=ModernTheme.SURFACE_ELEVATED
-            )
-            
-        def on_focus_out(e):
-            entry.config(
-                highlightbackground=ModernTheme.BORDER,
-                bg=ModernTheme.SURFACE_VARIANT
-            )
-            
-        entry.bind("<FocusIn>", on_focus_in)
-        entry.bind("<FocusOut>", on_focus_out)
-        
-        return entry
-        
-    def create_modern_label(self, parent, text="", style="body", **kwargs):
-        """Create a modern dark theme label with different styles"""
-        styles = {
-            "title": {
-                "font": ModernTheme.get_font(28, "bold"),
-                "fg": ModernTheme.TEXT_PRIMARY,
-            },
-            "heading": {
-                "font": ModernTheme.get_font(16, "bold"),
-                "fg": ModernTheme.TEXT_PRIMARY,
-            },
-            "subheading": {
-                "font": ModernTheme.get_font(14, "normal"),
-                "fg": ModernTheme.TEXT_SECONDARY,
-            },
-            "body": {
-                "font": ModernTheme.get_font(10, "normal"),
-                "fg": ModernTheme.TEXT_PRIMARY,
-            },
-            "caption": {
-                "font": ModernTheme.get_font(9, "normal"),
-                "fg": ModernTheme.TEXT_SECONDARY,
-            },
-            "accent": {
-                "font": ModernTheme.get_font(10, "normal"),
-                "fg": ModernTheme.TEXT_ACCENT,
-            },
-        }
-        
-        style_config = styles.get(style, styles["body"])
-        
-        return tk.Label(
-            parent,
-            text=text,
-            bg=ModernTheme.BACKGROUND,
-            **style_config,
+            highlightthickness=1,
             **kwargs,
         )
 
@@ -1042,7 +773,7 @@ class SimpleOptimizerApp(tk.Tk):
         # Version badge
         version_label = tk.Label(
             header_content,
-            text="v3.2.0",
+            text="v3.6.6",
             bg=ModernTheme.PRIMARY_LIGHT,
             fg=ModernTheme.PRIMARY,
             font=ModernTheme.get_font(10, "bold"),
@@ -1215,6 +946,16 @@ class SimpleOptimizerApp(tk.Tk):
                 "Bayesian Learning",
                 "Intelligent experiment suggestion using Gaussian processes",
             ),
+            (
+                "🧬",
+                "UnifiedExponentialKernel",
+                "Advanced kernel for mixed variables: continuous, discrete, and categorical parameters",
+            ),
+            (
+                "⚡",
+                "Modern Acquisition Functions",
+                "State-of-the-art qNEHVI and qLogEI for superior optimization performance",
+            ),
         ]
 
         for i, (icon, title, desc) in enumerate(features):
@@ -1353,7 +1094,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Optimization Setup",
             font=("Arial", 18, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         )
         header_label.pack(pady=(0, 20))
 
@@ -1403,7 +1144,7 @@ class SimpleOptimizerApp(tk.Tk):
             btn_frame,
             text="Start Optimization",
             font=("Arial", 12, "bold"),
-            bg=ModernTheme.SUCCESS,
+            bg="#27ae60",
             fg="white",
             padx=30,
             pady=10,
@@ -1416,7 +1157,7 @@ class SimpleOptimizerApp(tk.Tk):
             btn_frame,
             text="Back",
             font=("Arial", 12),
-            bg=ModernTheme.SECONDARY,
+            bg="#95a5a6",
             fg="white",
             padx=30,
             pady=10,
@@ -1511,7 +1252,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Define Optimization Parameters",
             font=("Arial", 14, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(anchor="w")
 
         tk.Label(
@@ -1519,53 +1260,53 @@ class SimpleOptimizerApp(tk.Tk):
             text="Parameters are the variables you can control. You can also define optimization goals for them.",
             font=("Arial", 10),
             bg="white",
-            fg=ModernTheme.TEXT_SECONDARY,
+            fg="#7f8c8d",
         ).pack(anchor="w", pady=(5, 0))
 
         # Column headers for the parameter table.
-        headers_frame = tk.Frame(parent, bg=ModernTheme.SURFACE)
+        headers_frame = tk.Frame(parent, bg="#f8f9fa")
         headers_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
 
         tk.Label(
             headers_frame,
             text="Name",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=15,
         ).grid(row=0, column=0, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Type",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=12,
         ).grid(row=0, column=1, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Bounds/Values",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=20,
         ).grid(row=0, column=2, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Goal",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=12,
         ).grid(row=0, column=3, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Target",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=10,
         ).grid(row=0, column=4, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Action",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=8,
         ).grid(row=0, column=5, padx=5, pady=5)
 
@@ -1594,7 +1335,7 @@ class SimpleOptimizerApp(tk.Tk):
             params_container,
             text="Add Parameter",
             font=("Arial", 10),
-            bg=ModernTheme.PRIMARY,
+            bg="#3498db",
             fg="white",
             command=self._add_parameter_row,
         )
@@ -1620,7 +1361,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Define Optimization Responses",
             font=("Arial", 14, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(anchor="w")
 
         tk.Label(
@@ -1628,46 +1369,46 @@ class SimpleOptimizerApp(tk.Tk):
             text="Responses are the outputs you measure and want to optimize.",
             font=("Arial", 10),
             bg="white",
-            fg=ModernTheme.TEXT_SECONDARY,
+            fg="#7f8c8d",
         ).pack(anchor="w", pady=(5, 0))
 
         # Column headers for the response table.
-        headers_frame = tk.Frame(parent, bg=ModernTheme.SURFACE)
+        headers_frame = tk.Frame(parent, bg="#f8f9fa")
         headers_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
 
         tk.Label(
             headers_frame,
             text="Name",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=15,
         ).grid(row=0, column=0, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Goal",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=12,
         ).grid(row=0, column=1, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Target",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=10,
         ).grid(row=0, column=2, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Units",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=10,
         ).grid(row=0, column=3, padx=5, pady=5)
         tk.Label(
             headers_frame,
             text="Action",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.SURFACE,
+            bg="#f8f9fa",
             width=8,
         ).grid(row=0, column=4, padx=5, pady=5)
 
@@ -1696,7 +1437,7 @@ class SimpleOptimizerApp(tk.Tk):
             responses_container,
             text="Add Response",
             font=("Arial", 10),
-            bg=ModernTheme.ERROR,
+            bg="#e74c3c",
             fg="white",
             command=self._add_response_row,
         )
@@ -1707,7 +1448,7 @@ class SimpleOptimizerApp(tk.Tk):
             responses_container,
             text="⭐ Set Response Importance",
             font=("Arial", 10, "bold"),
-            bg=ModernTheme.WARNING,  # Orange color for importance
+            bg="#FF9800",  # Orange color for importance
             fg="white",
             command=self._show_importance_dialog,
         )
@@ -1723,7 +1464,7 @@ class SimpleOptimizerApp(tk.Tk):
         optimization goal, and an optional target value.
         """
         row_frame = tk.Frame(
-            self.params_frame, bg=ModernTheme.SURFACE, relief="solid", borderwidth=1
+            self.params_frame, bg="#f8f9fa", relief="solid", borderwidth=1
         )
         row_frame.pack(fill=tk.X, padx=5, pady=5)
 
@@ -1776,7 +1517,7 @@ class SimpleOptimizerApp(tk.Tk):
         remove_btn = tk.Button(
             row_frame,
             text="Remove",
-            bg=ModernTheme.ERROR,
+            bg="#e74c3c",
             fg="white",
             command=lambda: self._remove_row(row_frame, widgets, self.param_rows),
         )
@@ -1792,7 +1533,7 @@ class SimpleOptimizerApp(tk.Tk):
         an optional target value, and units.
         """
         row_frame = tk.Frame(
-            self.responses_frame, bg=ModernTheme.SURFACE, relief="solid", borderwidth=1
+            self.responses_frame, bg="#f8f9fa", relief="solid", borderwidth=1
         )
         row_frame.pack(fill=tk.X, padx=5, pady=5)
 
@@ -1831,7 +1572,7 @@ class SimpleOptimizerApp(tk.Tk):
         remove_btn = tk.Button(
             row_frame,
             text="Remove",
-            bg=ModernTheme.ERROR,
+            bg="#e74c3c",
             fg="white",
             command=lambda: self._remove_row(row_frame, widgets, self.response_rows),
         )
@@ -2018,18 +1759,25 @@ class SimpleOptimizerApp(tk.Tk):
         try:
             # Collect parameter configurations from the GUI.
             params_config = {}
-            for row in self.param_rows:
+            logger.debug("=== COLLECTING PARAMETER CONFIGURATIONS FROM GUI ===")
+            for i, row in enumerate(self.param_rows):
                 name = row["name"].get().strip()
+                logger.debug(f"Processing parameter row {i}: name='{name}'")
+                
                 # Skip rows that haven't been named or are still default placeholders.
                 if not name or name.startswith("Parameter_"):
+                    logger.debug(f"  SKIPPING row {i}: name is empty or default placeholder")
                     continue
 
                 param_type = row["type"].get()
                 bounds_str = row["bounds"].get().strip()
                 goal = row["goal"].get()
                 target_str = row["target"].get().strip()
+                
+                logger.debug(f"  Parameter '{name}': type='{param_type}', bounds='{bounds_str}', goal='{goal}', target='{target_str}'")
 
                 config = {"type": param_type, "goal": goal}
+                logger.debug(f"  Created initial config for '{name}': {config}")
 
                 # Parse bounds/values based on parameter type.
                 if param_type in ["continuous", "discrete"]:
@@ -2059,12 +1807,22 @@ class SimpleOptimizerApp(tk.Tk):
                 if goal == "Target" and target_str:
                     try:
                         config["ideal"] = float(target_str)
+                        logger.debug(f"  Added target value for '{name}': {config['ideal']}")
                     except ValueError:
                         raise ValueError(
                             f"Invalid target value for '{name}': '{target_str}' is not a number."
                         )
 
+                logger.debug(f"  FINAL config for parameter '{name}': {config}")
                 params_config[name] = config
+                logger.debug(f"  ✓ STORED parameter '{name}' in params_config")
+
+            # Summary of collected parameters
+            logger.debug(f"=== PARAMETER COLLECTION SUMMARY ===")
+            logger.debug(f"Total parameters collected: {len(params_config)}")
+            for name, config in params_config.items():
+                logger.debug(f"  '{name}': goal='{config['goal']}', type='{config['type']}'")
+            logger.debug(f"=== END PARAMETER COLLECTION ===")
 
             # Collect response configurations from the GUI.
             responses_config = {}
@@ -2204,7 +1962,7 @@ class SimpleOptimizerApp(tk.Tk):
             responses_config (Dict[str, Any]): The configuration of responses.
         """
         # Header for the main application interface.
-        header_frame = tk.Frame(self.main_frame, bg=ModernTheme.SURFACE, height=60)
+        header_frame = tk.Frame(self.main_frame, bg="#34495e", height=60)
         header_frame.pack(fill=tk.X)
         header_frame.pack_propagate(
             False
@@ -2214,12 +1972,12 @@ class SimpleOptimizerApp(tk.Tk):
             header_frame,
             text="Multi-Objective Optimization - Active Session",
             font=("Arial", 16, "bold"),
-            bg=ModernTheme.SURFACE,
-            fg=ModernTheme.TEXT_PRIMARY,
+            bg="#34495e",
+            fg="white",
         ).pack(pady=20)
 
         # Content area that will hold the control and plot panels.
-        content_frame = tk.Frame(self.main_frame, bg=ModernTheme.BACKGROUND)
+        content_frame = tk.Frame(self.main_frame, bg="white")
         content_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # PanedWindow to allow resizing of left and right panels.
@@ -2263,7 +2021,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Experiment Control",
             font=("Arial", 14, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(side=tk.LEFT, anchor="w")
 
         # Button to save the current optimization study.
@@ -2271,11 +2029,23 @@ class SimpleOptimizerApp(tk.Tk):
             header_frame,
             text="Save Optimization",
             font=("Arial", 10),
-            bg=ModernTheme.SUCCESS,
+            bg="#28a745",
             fg="white",
             command=self._save_current_study,
         )
         save_btn.pack(side=tk.RIGHT, padx=5)
+
+        # Add button to open Goal Impact Dashboard
+        if GOAL_IMPACT_DASHBOARD_AVAILABLE:
+            dashboard_btn = tk.Button(
+                header_frame,
+                text="📊 Goal Impact Dashboard",
+                font=("Arial", 10),
+                bg="#3498db",
+                fg="white",
+                command=self._show_goal_impact_dashboard,
+            )
+            dashboard_btn.pack(side=tk.RIGHT, padx=5)
 
 
         # Notebook widget to organize different control sections.
@@ -2333,7 +2103,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Recommended Parameters",
             font=("Arial", 12, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(anchor="w", padx=15, pady=(15, 10))
 
         # Instructions for the user.
@@ -2342,7 +2112,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Use these parameter values for your next experiment:",
             font=("Arial", 10),
             bg="white",
-            fg=ModernTheme.TEXT_SECONDARY,
+            fg="#7f8c8d",
         ).pack(anchor="w", padx=15, pady=(0, 10))
 
         # Frame to display individual parameter suggestions.
@@ -2372,8 +2142,8 @@ class SimpleOptimizerApp(tk.Tk):
                 param_frame,
                 text="Calculating...",  # Placeholder text while suggestion is being generated.
                 font=("Arial", 11, "bold"),
-                bg=ModernTheme.SUCCESS_LIGHT,
-                fg=ModernTheme.TEXT_SUCCESS,
+                bg="#e8f5e8",
+                fg="#2d5a3d",
                 relief="solid",
                 borderwidth=1,
                 padx=10,
@@ -2388,7 +2158,7 @@ class SimpleOptimizerApp(tk.Tk):
             parent,
             text="Refresh Suggestion",
             font=("Arial", 10),
-            bg=ModernTheme.PRIMARY,
+            bg="#3498db",
             fg="white",
             command=self._refresh_suggestion,
         )
@@ -2399,7 +2169,7 @@ class SimpleOptimizerApp(tk.Tk):
             parent,
             text="Note: The algorithm suggests the most informative experiment.\nThe same suggestion will appear until new data is added.",
             font=("Arial", 8),
-            fg=ModernTheme.TEXT_SECONDARY,
+            fg="#7f8c8d",
             bg="white",
             justify=tk.CENTER
         )
@@ -2432,7 +2202,7 @@ class SimpleOptimizerApp(tk.Tk):
             batch_frame,
             text="Generate Batch",
             font=("Arial", 10),
-            bg=ModernTheme.SUCCESS,
+            bg="#28a745",
             fg="white",
             command=self._generate_batch_suggestions,
         )
@@ -2443,7 +2213,7 @@ class SimpleOptimizerApp(tk.Tk):
             batch_frame,
             text="Download CSV",
             font=("Arial", 10),
-            bg=ModernTheme.PRIMARY,
+            bg="#007bff",
             fg="white",
             command=self._download_batch_suggestions_csv,
         )
@@ -2454,7 +2224,7 @@ class SimpleOptimizerApp(tk.Tk):
             batch_frame,
             text="Upload CSV",
             font=("Arial", 10),
-            bg=ModernTheme.ACCENT,
+            bg="#6f42c1",
             fg="white",
             command=self._upload_batch_suggestions_csv,
         )
@@ -2493,7 +2263,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Enter Experimental Results",
             font=("Arial", 12, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(anchor="w", padx=15, pady=(15, 10))
 
         # Frame to contain entry fields for response values.
@@ -2529,23 +2299,44 @@ class SimpleOptimizerApp(tk.Tk):
                     text=units,
                     font=("Arial", 9),
                     bg="white",
-                    fg=ModernTheme.TEXT_SECONDARY,
+                    fg="#7f8c8d",
                 ).pack(side=tk.LEFT)
 
             self.results_entries[name] = entry
 
+        # Buttons frame for results submission and editing
+        buttons_frame = tk.Frame(parent, bg="white")
+        buttons_frame.pack(pady=20)
+        
         # Button to submit the entered results.
         submit_btn = tk.Button(
-            parent,
+            buttons_frame,
             text="Submit Results",
             font=("Arial", 12, "bold"),
-            bg=ModernTheme.SUCCESS,
+            bg="#27ae60",
             fg="white",
             padx=30,
             pady=10,
             command=self._submit_results,
         )
-        submit_btn.pack(pady=20)
+        submit_btn.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # Button to edit last result (initially hidden)
+        self.edit_last_result_btn = tk.Button(
+            buttons_frame,
+            text="📝 Edit Last Result",
+            font=("Arial", 11, "bold"),
+            bg="#f39c12",
+            fg="white",
+            padx=25,
+            pady=10,
+            command=self._edit_last_result,
+            state=tk.DISABLED
+        )
+        self.edit_last_result_btn.pack(side=tk.LEFT)
+        
+        # Update button visibility based on data availability
+        self._update_edit_button_state()
 
     def _build_best_solution_tab(
         self,
@@ -2568,7 +2359,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Optimal Parameter Values",
             font=("Arial", 12, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(anchor="w", padx=15, pady=(15, 10))
 
         # Frame to display optimal parameter values.
@@ -2595,7 +2386,7 @@ class SimpleOptimizerApp(tk.Tk):
                 param_frame,
                 text="Not available",  # Placeholder until data is updated.
                 font=("Arial", 10),
-                bg=ModernTheme.SURFACE_VARIANT,
+                bg="#ecf0f1",
                 relief="solid",
                 borderwidth=1,
                 padx=10,
@@ -2611,7 +2402,7 @@ class SimpleOptimizerApp(tk.Tk):
             text="Predicted Response Values",
             font=("Arial", 12, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(anchor="w", padx=15, pady=(15, 10))
 
         # Frame to display predicted response values.
@@ -2638,7 +2429,7 @@ class SimpleOptimizerApp(tk.Tk):
                 response_frame,
                 text="Not available",  # Placeholder until data is updated.
                 font=("Arial", 10),
-                bg=ModernTheme.SURFACE_VARIANT,
+                bg="#ecf0f1",
                 relief="solid",
                 borderwidth=1,
                 padx=10,
@@ -2655,8 +2446,8 @@ class SimpleOptimizerApp(tk.Tk):
                 response_frame,
                 text="",  # Confidence interval text.
                 font=("Arial", 8),
-                bg=ModernTheme.SURFACE_VARIANT,
-                fg=ModernTheme.TEXT_SECONDARY,
+                bg="#ecf0f1",
+                fg="#7f8c8d",
                 padx=5,
                 pady=1,
             )
@@ -2692,7 +2483,7 @@ class SimpleOptimizerApp(tk.Tk):
                 text="⚠️ GPU Acceleration Widget Unavailable",
                 font=("Arial", 12, "bold"),
                 bg="white",
-                fg=ModernTheme.TEXT_ERROR
+                fg="#dc3545"
             ).pack(pady=10)
             
             tk.Label(
@@ -2701,7 +2492,7 @@ class SimpleOptimizerApp(tk.Tk):
                      "This may be due to missing dependencies or hardware limitations.",
                 font=("Arial", 10),
                 bg="white",
-                fg=ModernTheme.TEXT_SECONDARY,
+                fg="#6c757d",
                 justify=tk.CENTER,
                 wraplength=400
             ).pack(pady=10)
@@ -2860,7 +2651,7 @@ work transparently when beneficial.
             text=info_text,
             font=("Arial", 10),
             bg="white",
-            fg=ModernTheme.TEXT_SECONDARY,
+            fg="#495057",
             justify=tk.LEFT,
             wraplength=500
         ).pack(pady=20)
@@ -2873,7 +2664,7 @@ work transparently when beneficial.
             button_frame,
             text="📊 View Orchestrator Stats",
             font=("Arial", 10),
-            bg=ModernTheme.PRIMARY,
+            bg="#17a2b8",
             fg="white",
             command=self._show_orchestrator_stats,
             width=20
@@ -2883,7 +2674,7 @@ work transparently when beneficial.
             button_frame,
             text="🗑️ Clear Cache",
             font=("Arial", 10),
-            bg=ModernTheme.SECONDARY,
+            bg="#6c757d",
             fg="white",
             command=self._clear_optimization_cache,
             width=15
@@ -2899,7 +2690,7 @@ work transparently when beneficial.
             text="⚠️ Parallel Optimization Controls Error",
             font=("Arial", 12, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_ERROR
+            fg="#dc3545"
         ).pack(pady=10)
         
         tk.Label(
@@ -2908,7 +2699,7 @@ work transparently when beneficial.
                  "but the advanced controls interface is not available.",
             font=("Arial", 10),
             bg="white",
-            fg=ModernTheme.TEXT_SECONDARY,
+            fg="#6c757d",
             justify=tk.CENTER,
             wraplength=400
         ).pack(pady=10)
@@ -2982,7 +2773,7 @@ work transparently when beneficial.
             text="Data Visualization",
             font=("Arial", 14, "bold"),
             bg="white",
-            fg=ModernTheme.TEXT_PRIMARY,
+            fg="#2c3e50",
         ).pack(side=tk.LEFT, anchor="w")
         
         # Control button removed as requested
@@ -3072,12 +2863,13 @@ work transparently when beneficial.
             params_config (Dict[str, Any]): The configuration of parameters.
         """
         # Initialize variables for Pareto plot (controls now handled by separate panels)
+        # Only include actual optimization objectives (Maximize/Minimize), not constraints (Target/Range)
         objectives = []
         for name, conf in params_config.items():
-            if conf.get("goal") in ["Maximize", "Minimize", "Target"]:
+            if conf.get("goal") in ["Maximize", "Minimize"]:
                 objectives.append(name)
         for name, conf in responses_config.items():
-            if conf.get("goal") in ["Maximize", "Minimize", "Target"]:
+            if conf.get("goal") in ["Maximize", "Minimize"]:
                 objectives.append(name)
 
         self.pareto_x_var = tk.StringVar(value=objectives[0] if objectives else "")
@@ -3135,8 +2927,12 @@ work transparently when beneficial.
         )
         
         # Store configs for later use
+        logger.debug("=== STORING CONFIGURATIONS IN GUI INSTANCE ===")
         self.params_config = params_config
         self.responses_config = responses_config
+        logger.debug(f"GUI.params_config stored: {self.params_config}")
+        logger.debug(f"GUI.responses_config stored: {self.responses_config}")
+        logger.debug("=== CONFIGURATION STORAGE COMPLETE ===")
         
         # Create the popout control panel (initially hidden)
         if PARETO_CONTROLS_AVAILABLE:
@@ -3374,6 +3170,33 @@ work transparently when beneficial.
             logger.error(f"Traceback: {traceback.format_exc()}")
             self.gp_slice_control_panel = None
     
+    def _create_sensitivity_analysis_control_panel(self) -> None:
+        """
+        Create the Sensitivity Analysis control panel in a popup window.
+        """
+        try:
+            logger.debug("Creating Sensitivity Analysis control panel")
+            self.sensitivity_analysis_control_panel = create_sensitivity_analysis_control_panel(
+                parent=self,  # Use self since SimpleOptimizerApp inherits from tk.Tk
+                plot_type="sensitivity_analysis",
+                params_config=getattr(self, 'params_config', {}),
+                responses_config=getattr(self, 'responses_config', {}),
+                update_callback=self._refresh_sensitivity_analysis_plot,
+                export_callback=self._export_sensitivity_analysis_plot
+            )
+            
+            # Add to enhanced_controls registry
+            if not hasattr(self, 'enhanced_controls'):
+                self.enhanced_controls = {}
+            self.enhanced_controls["sensitivity_analysis"] = self.sensitivity_analysis_control_panel
+            
+            logger.info("Sensitivity Analysis control panel created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create Sensitivity Analysis control panel: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            self.sensitivity_analysis_control_panel = None
+    
     def _show_gp_slice_controls(self) -> None:
         """
         Show the GP Slice control panel popup window.
@@ -3403,6 +3226,35 @@ work transparently when beneficial.
             except Exception as e:
                 logger.error(f"Failed to create GP Slice control panel on demand: {e}")
     
+    def _show_sensitivity_analysis_controls(self) -> None:
+        """
+        Show the Sensitivity Analysis control panel popup window.
+        """
+        logger.debug(f"_show_sensitivity_analysis_controls called. Has sensitivity_analysis_control_panel: {hasattr(self, 'sensitivity_analysis_control_panel')}")
+        if hasattr(self, 'sensitivity_analysis_control_panel'):
+            logger.debug(f"sensitivity_analysis_control_panel value: {self.sensitivity_analysis_control_panel}")
+        
+        if hasattr(self, 'sensitivity_analysis_control_panel') and self.sensitivity_analysis_control_panel:
+            self.sensitivity_analysis_control_panel.show()
+            logger.info("Sensitivity Analysis control panel shown")
+        else:
+            logger.warning("Sensitivity Analysis control panel not available - attempting to create it now")
+            # Try to create it if it doesn't exist
+            try:
+                self._create_sensitivity_analysis_control_panel()
+                if hasattr(self, 'sensitivity_analysis_control_panel') and self.sensitivity_analysis_control_panel:
+                    self.sensitivity_analysis_control_panel.show()
+                    logger.info("Sensitivity Analysis control panel created and shown")
+                    
+                    # Ensure it's also in enhanced_controls
+                    if not hasattr(self, 'enhanced_controls'):
+                        self.enhanced_controls = {}
+                    self.enhanced_controls["sensitivity_analysis"] = self.sensitivity_analysis_control_panel
+                else:
+                    logger.error("Failed to create Sensitivity Analysis control panel")
+            except Exception as e:
+                logger.error(f"Failed to create Sensitivity Analysis control panel on demand: {e}")
+    
     def _refresh_gp_slice_plot(self) -> None:
         """
         Refresh the GP Slice plot using current control panel settings.
@@ -3414,9 +3266,41 @@ work transparently when beneficial.
                 options = self.gp_slice_control_panel.get_display_options()
                 logger.debug(f"GP Slice control panel options: {options}")
                 
-                # Update the internal variables to match control panel
+                # Handle parameter switching logic
                 if 'x_param' in options:
-                    self.gp_param1_var.set(options['x_param'])
+                    new_x_param = options['x_param']
+                    current_x_param = self.gp_param1_var.get()
+                    current_y_param = self.gp_param2_var.get()
+                    
+                    # Check if X parameter actually changed
+                    if new_x_param != current_x_param:
+                        logger.debug(f"Parameter switch detected: {current_x_param} -> {new_x_param}")
+                        
+                        # When X parameter changes, the old X parameter becomes the new Y (fixed) parameter
+                        # and we should set the fixed value to the midpoint of the old X parameter
+                        if current_x_param in self.params_config:
+                            # Get bounds of the old X parameter (now becoming fixed parameter)
+                            old_param_bounds = self.params_config[current_x_param].get('bounds', [0, 1])
+                            midpoint = (old_param_bounds[0] + old_param_bounds[1]) / 2.0
+                            
+                            # Normalize the midpoint to [0, 1] range for the fixed value slider
+                            param_range = old_param_bounds[1] - old_param_bounds[0]
+                            if param_range > 0:
+                                normalized_midpoint = (midpoint - old_param_bounds[0]) / param_range
+                            else:
+                                normalized_midpoint = 0.5
+                            
+                            # Update the fixed value to the midpoint of the old X parameter
+                            self.gp_fixed_value_var.set(normalized_midpoint)
+                            logger.info(f"GP Slice: Parameter switch - slice now at {current_x_param}={midpoint:.2f} (normalized: {normalized_midpoint:.3f})")
+                        
+                        # Set the new fixed parameter (param2) to be the old X parameter
+                        self.gp_param2_var.set(current_x_param)
+                        logger.debug(f"Set param2 (fixed parameter) to: {current_x_param}")
+                    
+                    # Update X parameter to new selection
+                    self.gp_param1_var.set(new_x_param)
+                    
                 if 'y_response' in options:
                     self.gp_response_var.set(options['y_response'])
                 
@@ -3450,6 +3334,61 @@ work transparently when beneficial.
                 logger.error("GP Slice figure not available for export")
         except Exception as e:
             logger.error(f"Error exporting GP Slice plot: {e}")
+            raise
+    
+    def _refresh_sensitivity_analysis_plot(self) -> None:
+        """
+        Refresh the Sensitivity Analysis plot using current control panel settings.
+        """
+        try:
+            logger.debug("_refresh_sensitivity_analysis_plot called")
+            if hasattr(self, 'sensitivity_analysis_control_panel') and self.sensitivity_analysis_control_panel:
+                # Get current settings from control panel
+                settings = self.sensitivity_analysis_control_panel.get_sensitivity_settings()
+                logger.debug(f"Sensitivity Analysis control panel settings: {settings}")
+                
+                # Update the internal variables to match control panel
+                if 'response' in settings:
+                    self.sensitivity_response_var.set(settings['response'])
+                if 'algorithm_code' in settings:
+                    # Convert algorithm code to display name for internal variable
+                    for display_name, code in self.sensitivity_method_mapping.items():
+                        if code == settings['algorithm_code']:
+                            self.sensitivity_method_var.set(display_name)
+                            break
+                if 'iterations' in settings:
+                    self.sensitivity_samples_var.set(settings['iterations'])
+                
+                # Trigger plot update
+                if hasattr(self, 'controller') and self.controller and hasattr(self.controller, 'plot_manager'):
+                    logger.debug("Calling _update_sensitivity_analysis_plot")
+                    self._update_sensitivity_analysis_plot(self.controller.plot_manager)
+                    logger.info("Sensitivity Analysis plot refreshed with control panel settings")
+                else:
+                    logger.warning("Plot manager not available for refresh")
+            else:
+                logger.warning("Sensitivity Analysis control panel not available for refresh")
+        except Exception as e:
+            logger.error(f"Error refreshing Sensitivity Analysis plot: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    def _export_sensitivity_analysis_plot(self, filename: str, dpi: int) -> None:
+        """
+        Export the Sensitivity Analysis plot with specified filename and DPI.
+        
+        Args:
+            filename: Path where to save the plot
+            dpi: DPI setting for the export
+        """
+        try:
+            if hasattr(self, 'sensitivity_fig') and self.sensitivity_fig:
+                self.sensitivity_fig.savefig(filename, dpi=dpi, bbox_inches='tight')
+                logger.info(f"Sensitivity Analysis plot exported to {filename} at {dpi} DPI")
+            else:
+                logger.error("Sensitivity Analysis figure not available for export")
+        except Exception as e:
+            logger.error(f"Error exporting Sensitivity Analysis plot: {e}")
             raise
     
     def _create_parallel_coordinates_control_panel(self) -> None:
@@ -4567,6 +4506,7 @@ work transparently when beneficial.
             ("Sobol-like", "sobol"),
             ("GP Lengthscale", "lengthscale"),
             ("Feature Importance", "feature_importance"),
+            ("Mixed Parameter Sensitivity", "mixed"),
         ]
         
         self.sensitivity_method_var = tk.StringVar(
@@ -4583,9 +4523,41 @@ work transparently when beneficial.
         # Initialize info label variable
         self.sensitivity_info_label = None
 
+        # Create main container for controls and plot
+        main_container = tk.Frame(parent, bg="white")
+        main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Create control frame for buttons at top
+        control_frame = tk.Frame(main_container, bg="white", height=50)
+        control_frame.pack(fill=tk.X, pady=(0, 10))
+        control_frame.pack_propagate(False)
+        
+        # Add button to open Sensitivity Analysis control panel
+        logger.debug(f"SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE: {SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE}")
+        if SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE:
+            control_btn = tk.Button(
+                control_frame,
+                text="🎛️ Open Sensitivity Controls",
+                command=self._show_sensitivity_analysis_controls,
+                bg=COLOR_PRIMARY,
+                fg=COLOR_SURFACE,
+                font=("Arial", 10, "bold"),
+                relief="flat",
+                padx=20,
+                pady=8
+            )
+            control_btn.pack(side=tk.LEFT, padx=5, pady=5)
+            logger.debug("Sensitivity Analysis control button created")
+        else:
+            logger.warning("SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE is False - button not created")
+        
+        # Create plot container below controls
+        plot_container = tk.Frame(main_container, bg="white")
+        plot_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
         # Create plot with compact controls using helper method
         self._create_plot_with_compact_controls(
-            parent=parent,
+            parent=plot_container,
             plot_type="sensitivity_analysis",
             fig_attr="sensitivity_fig",
             canvas_attr="sensitivity_canvas",
@@ -4594,6 +4566,13 @@ work transparently when beneficial.
             figsize=(10, 6),  # Wider aspect ratio for sensitivity analysis
             aspect_ratio=1.67,  # 5:3 aspect ratio for better sensitivity view
         )
+        
+        # Create the popout control panel (initially hidden)
+        if SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE:
+            logger.debug("Attempting to create Sensitivity Analysis control panel")
+            self._create_sensitivity_analysis_control_panel()
+        else:
+            logger.warning("SENSITIVITY_ANALYSIS_CONTROLS_AVAILABLE is False - control panel not created")
 
     def _update_sensitivity_info(self, event=None):
         """Update sensitivity method information."""
@@ -4606,17 +4585,78 @@ work transparently when beneficial.
             "Sobol-like": "Simplified Sobol indices showing global sensitivity. Robust across different response surface types.",
             "GP Lengthscale": "Uses GP model lengthscales directly. Short lengthscales indicate high sensitivity (model intrinsic).",
             "Feature Importance": "Permutation-based importance using variance differences. Model-agnostic sensitivity measure.",
+            "Mixed Parameter Sensitivity": "Comprehensive analysis of both continuous and discrete parameters. Shows complete parameter influence ranking.",
         }
 
         self.sensitivity_info_label.config(
             text=info_text.get(method_name, "Select a sensitivity analysis method")
         )
 
+    def _show_goal_impact_dashboard(self) -> None:
+        """
+        Show the Goal Impact Dashboard popup window.
+        """
+        logger.debug(f"_show_goal_impact_dashboard called. Has goal_impact_dashboard: {hasattr(self, 'goal_impact_dashboard')}")
+
+        if hasattr(self, 'goal_impact_dashboard') and self.goal_impact_dashboard:
+            try:
+                self.goal_impact_dashboard.show()
+                logger.info("Goal Impact Dashboard shown")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to show existing dashboard: {e}, creating new one")
+                # Clear the reference and create new dashboard
+                self.goal_impact_dashboard = None
+        
+        # Create new dashboard if we don't have one or the old one failed
+        logger.info("Creating Goal Impact Dashboard")
+        try:
+            # Create dashboard with optimizer reference
+            logger.debug("=== CREATING GOAL IMPACT DASHBOARD ===")
+            optimizer = getattr(self, 'controller', None)
+            logger.debug(f"Controller reference: {optimizer}")
+            
+            if optimizer and hasattr(optimizer, 'optimizer'):
+                optimizer = optimizer.optimizer
+                logger.debug(f"Optimizer reference: {optimizer}")
+                
+                # Debug optimizer configuration
+                if hasattr(optimizer, 'params_config'):
+                    logger.debug(f"Optimizer.params_config: {optimizer.params_config}")
+                    for name, config in optimizer.params_config.items():
+                        logger.debug(f"  Optimizer param '{name}': goal='{config.get('goal', 'MISSING')}', config={config}")
+                else:
+                    logger.debug("Optimizer has NO params_config attribute")
+                    
+                if hasattr(optimizer, 'responses_config'):
+                    logger.debug(f"Optimizer.responses_config: {optimizer.responses_config}")
+                    for name, config in optimizer.responses_config.items():
+                        logger.debug(f"  Optimizer response '{name}': goal='{config.get('goal', 'MISSING')}', config={config}")
+                else:
+                    logger.debug("Optimizer has NO responses_config attribute")
+            else:
+                logger.debug("No optimizer available or controller.optimizer not found")
+
+            logger.debug(f"Passing optimizer to dashboard: {optimizer}")
+            self.goal_impact_dashboard = create_goal_impact_dashboard(
+                parent=self,
+                optimizer=optimizer,
+                update_callback=self._update_goal_dashboard
+            )
+            logger.info("Goal Impact Dashboard created and shown")
+        except Exception as e:
+            logger.error(f"Failed to create Goal Impact Dashboard: {e}")
+            messagebox.showerror("Dashboard Error", f"Could not create Goal Impact Dashboard: {str(e)}")
+
+    def _update_goal_dashboard(self):
+        """Update callback for Goal Impact Dashboard"""
+        if hasattr(self, 'goal_impact_dashboard') and self.goal_impact_dashboard:
+            self.goal_impact_dashboard.refresh_dashboard()
+
     def _refresh_suggestion(self):
         """CORRECTED - Refresh suggestion manually"""
         if self.controller:
             try:
-                logger.info("Refreshing suggestion manually...")
                 
                 # Generate new suggestion (will be the same until new data is added - this is correct behavior)
                 suggestions = self.controller.optimizer.suggest_next_experiment(
@@ -4636,11 +4676,11 @@ work transparently when beneficial.
                             else:
                                 formatted_value = str(value)
                             label.config(
-                                text=formatted_value, bg=ModernTheme.SUCCESS_LIGHT, fg=ModernTheme.TEXT_SUCCESS
+                                text=formatted_value, bg="#e8f5e8", fg="#2d5a3d"
                             )
                         else:
                             label.config(
-                                text="Not available", bg=ModernTheme.WARNING_LIGHT, fg=ModernTheme.TEXT_SECONDARY
+                                text="Not available", bg="#ffeaa7", fg="#636e72"
                             )
 
                     self.set_status("Suggestion refreshed")
@@ -4687,6 +4727,234 @@ work transparently when beneficial.
                 messagebox.showerror("Input Error", str(e))
             except Exception as e:
                 messagebox.showerror("Submission Error", str(e))
+        
+        # Update edit button state after submission
+        self._update_edit_button_state()
+
+    def _update_edit_button_state(self):
+        """Update the state of the Edit Last Result button based on data availability."""
+        try:
+            if (hasattr(self, 'edit_last_result_btn') and 
+                hasattr(self, 'controller') and self.controller):
+                
+                # Use controller properties for consistent state checking
+                if (self.controller.has_optimizer and self.controller.has_data and
+                    hasattr(self.controller.optimizer, 'experimental_data')):
+                    
+                    exp_data = self.controller.optimizer.experimental_data
+                    
+                    if not exp_data.empty:
+                        self.edit_last_result_btn.config(state=tk.NORMAL)
+                    else:
+                        self.edit_last_result_btn.config(state=tk.DISABLED)
+                else:
+                    self.edit_last_result_btn.config(state=tk.DISABLED)
+            elif hasattr(self, 'edit_last_result_btn'):
+                self.edit_last_result_btn.config(state=tk.DISABLED)
+        except Exception as e:
+            # Handle any errors in button state update with logging
+            logger.warning(f"Error updating edit button state: {e}")
+            if hasattr(self, 'edit_last_result_btn'):
+                self.edit_last_result_btn.config(state=tk.DISABLED)
+    
+    def _edit_last_result(self):
+        """Open dialog to edit the most recent experimental result."""
+        if not self.controller:
+            messagebox.showerror("Error", "Controller not initialized.")
+            return
+        
+        # Check if we have an optimization session and data
+        if not self.controller.has_optimizer or not self.controller.has_data:
+            messagebox.showwarning("No Data", "No optimization session or experimental data available to edit.")
+            return
+            
+        try:
+            exp_data = self.controller.optimizer.experimental_data
+            if exp_data.empty:
+                messagebox.showwarning("No Data", "No experimental data available to edit.")
+                return
+            
+            # Get the last row of data
+            last_row = exp_data.iloc[-1]
+            
+            # Create edit dialog
+            self._show_last_result_edit_dialog(last_row)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open edit dialog: {str(e)}")
+    
+    def _show_last_result_edit_dialog(self, last_row):
+        """Show dialog for editing the last experimental result."""
+        # Create dialog window
+        dialog = tk.Toplevel(self)
+        dialog.title("Edit Last Result")
+        dialog.geometry("500x400")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_reqwidth() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_reqheight() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Header
+        header_label = tk.Label(
+            dialog,
+            text="⚠️ Edit Last Experimental Result",
+            font=("Arial", 14, "bold"),
+            fg="#d35400"
+        )
+        header_label.pack(pady=(15, 10))
+        
+        # Warning message
+        warning_text = (
+            "You are about to modify the most recent experimental result.\n"
+            "This will retrain the GP model and update all predictions.\n"
+            "Please ensure the new values are correct."
+        )
+        warning_label = tk.Label(
+            dialog,
+            text=warning_text,
+            font=("Arial", 10),
+            justify=tk.CENTER,
+            fg="#e74c3c",
+            wraplength=450
+        )
+        warning_label.pack(pady=(0, 15))
+        
+        # Current values frame
+        current_frame = tk.LabelFrame(dialog, text="Current Values", font=("Arial", 11, "bold"))
+        current_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        # New values frame
+        new_frame = tk.LabelFrame(dialog, text="New Values", font=("Arial", 11, "bold"))
+        new_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        # Store entry widgets
+        entry_widgets = {}
+        
+        # Extract response columns only
+        response_columns = list(self.controller.optimizer.responses_config.keys())
+        
+        for response_name in response_columns:
+            if response_name in last_row:
+                current_value = last_row[response_name]
+                
+                # Current value display
+                current_row = tk.Frame(current_frame)
+                current_row.pack(fill=tk.X, padx=10, pady=3)
+                
+                tk.Label(
+                    current_row,
+                    text=f"{response_name}:",
+                    font=("Arial", 10, "bold"),
+                    width=15,
+                    anchor="w"
+                ).pack(side=tk.LEFT)
+                
+                tk.Label(
+                    current_row,
+                    text=str(current_value),
+                    font=("Arial", 10),
+                    bg="#ecf0f1",
+                    relief="sunken",
+                    width=15
+                ).pack(side=tk.LEFT, padx=(5, 0))
+                
+                # New value entry
+                new_row = tk.Frame(new_frame)
+                new_row.pack(fill=tk.X, padx=10, pady=3)
+                
+                tk.Label(
+                    new_row,
+                    text=f"{response_name}:",
+                    font=("Arial", 10, "bold"),
+                    width=15,
+                    anchor="w"
+                ).pack(side=tk.LEFT)
+                
+                entry = tk.Entry(new_row, font=("Arial", 10), width=15)
+                entry.pack(side=tk.LEFT, padx=(5, 0))
+                entry.insert(0, str(current_value))  # Pre-fill with current value
+                
+                entry_widgets[response_name] = entry
+        
+        # Buttons frame
+        buttons_frame = tk.Frame(dialog)
+        buttons_frame.pack(pady=20)
+        
+        def apply_correction():
+            """Apply the correction and close dialog."""
+            try:
+                # Validate and collect new values
+                new_values = {}
+                for response_name, entry in entry_widgets.items():
+                    value_str = entry.get().strip()
+                    if not value_str:
+                        raise ValueError(f"Please enter a value for {response_name}")
+                    
+                    try:
+                        new_values[response_name] = float(value_str)
+                    except ValueError:
+                        raise ValueError(f"Invalid numeric value for {response_name}: {value_str}")
+                
+                # Final confirmation
+                old_values = {name: last_row[name] for name in response_columns if name in last_row}
+                confirmation_msg = "Confirm correction:\n\n"
+                
+                for name in response_columns:
+                    if name in old_values and name in new_values:
+                        old_val = old_values[name]
+                        new_val = new_values[name]
+                        if old_val != new_val:
+                            confirmation_msg += f"{name}: {old_val} → {new_val}\n"
+                
+                confirmation_msg += "\nThis will retrain the GP model. Continue?"
+                
+                if messagebox.askyesno("Confirm Correction", confirmation_msg):
+                    # Apply correction through controller
+                    self.controller.correct_last_result(new_values)
+                    
+                    # Update UI
+                    self.update_all_plots()
+                    self._refresh_suggestion()
+                    self._update_experimental_data_display()
+                    
+                    messagebox.showinfo("Success", "Last result corrected successfully.\nGP model has been retrained.")
+                    dialog.destroy()
+                    
+            except ValueError as e:
+                messagebox.showerror("Input Error", str(e))
+            except Exception as e:
+                messagebox.showerror("Correction Error", f"Failed to apply correction: {str(e)}")
+        
+        # Apply button
+        apply_btn = tk.Button(
+            buttons_frame,
+            text="✓ Apply Correction",
+            font=("Arial", 11, "bold"),
+            bg="#27ae60",
+            fg="white",
+            padx=20,
+            pady=8,
+            command=apply_correction
+        )
+        apply_btn.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # Cancel button
+        cancel_btn = tk.Button(
+            buttons_frame,
+            text="✗ Cancel",
+            font=("Arial", 11, "bold"),
+            bg="#95a5a6",
+            fg="white",
+            padx=20,
+            pady=8,
+            command=dialog.destroy
+        )
+        cancel_btn.pack(side=tk.LEFT)
 
     def _generate_batch_suggestions(self):
         """Generate a batch of suggestions and display them."""
@@ -4907,6 +5175,17 @@ work transparently when beneficial.
                 )
                 # Enable what-if analysis for loaded study with data
                 self.enable_whatif_analysis()
+                
+                # Force model building before updating plots to prevent "Model not available" errors
+                if hasattr(self.controller, 'optimizer') and hasattr(self.controller.optimizer, 'get_response_models'):
+                    try:
+                        models = self.controller.optimizer.get_response_models()
+                        logger.info(f'Pre-built models after loading: {list(models.keys()) if models else "NONE"}')
+                    except Exception as e:
+                        logger.warning(f'Model building after loading failed: {e}')
+                
+                # Update all plots to display loaded data
+                self.update_all_plots()
             else:
                 messagebox.showerror("Load Error", "Failed to load study")
 
@@ -5211,9 +5490,9 @@ work transparently when beneficial.
                     formatted_value = f"{rounded_value:.{precision}f}"
                 else:
                     formatted_value = str(value)
-                label.config(text=formatted_value, bg=ModernTheme.SUCCESS_LIGHT, fg=ModernTheme.TEXT_SUCCESS)
+                label.config(text=formatted_value, bg="#e8f5e8", fg="#2d5a3d")
             else:
-                label.config(text="Calculating...", bg=ModernTheme.WARNING_LIGHT, fg=ModernTheme.TEXT_SECONDARY)
+                label.config(text="Calculating...", bg="#ffeaa7", fg="#636e72")
 
         # Update best solution
         best_compromise = view_data.get("best_compromise", {})
@@ -5601,7 +5880,7 @@ work transparently when beneficial.
             self.control_buttons_frame,
             text=f"⚙ {plot_type.replace('_', ' ').title()}",
             font=("Segoe UI", 8, "bold"),
-            bg=ModernTheme.PRIMARY,
+            bg="#1976D2",
             fg="white",
             relief=tk.FLAT,
             bd=0,
@@ -5614,10 +5893,10 @@ work transparently when beneficial.
 
         # Add hover effect
         def on_enter(e):
-            control_btn.config(bg=ModernTheme.PRIMARY_DARK)
+            control_btn.config(bg="#1565C0")
 
         def on_leave(e):
-            control_btn.config(bg=ModernTheme.PRIMARY)
+            control_btn.config(bg="#1976D2")
 
         control_btn.bind("<Enter>", on_enter)
         control_btn.bind("<Leave>", on_leave)
@@ -5725,7 +6004,7 @@ work transparently when beneficial.
             button_frame,
             text=f"⚙ Open {plot_type.replace('_', ' ').title()} Controls",
             font=("Segoe UI", 9, "bold"),
-            bg=ModernTheme.PRIMARY,
+            bg="#1976D2",
             fg="white",
             relief=tk.FLAT,
             bd=0,
@@ -5737,45 +6016,33 @@ work transparently when beneficial.
         control_btn.pack()
 
         # Hover effect
-        control_btn.bind("<Enter>", lambda e: control_btn.config(bg=ModernTheme.PRIMARY_DARK))
-        control_btn.bind("<Leave>", lambda e: control_btn.config(bg=ModernTheme.PRIMARY))
+        control_btn.bind("<Enter>", lambda e: control_btn.config(bg="#1565C0"))
+        control_btn.bind("<Leave>", lambda e: control_btn.config(bg="#1976D2"))
 
     def _get_axis_ranges(self, plot_type: str) -> dict:
         """Get axis ranges from enhanced controls if available"""
         axis_ranges = {"x_range": None, "y_range": None, "z_range": None}
 
-        logger.info(f"Getting axis ranges for plot_type: {plot_type}")
-        logger.info(f"ENHANCED_CONTROLS_AVAILABLE: {ENHANCED_CONTROLS_AVAILABLE}")
-        logger.info(f"Has enhanced_controls attr: {hasattr(self, 'enhanced_controls')}")
-        
         if ENHANCED_CONTROLS_AVAILABLE and hasattr(self, "enhanced_controls"):
-            logger.info(f"Available control panels: {list(self.enhanced_controls.keys())}")
             control_panel = self.enhanced_controls.get(plot_type)
-            logger.info(f"Found control panel for {plot_type}: {control_panel is not None}")
             
             if control_panel:
                 # Check if control panel has axis ranges functionality
                 if hasattr(control_panel, 'get_axis_ranges'):
                     ranges = control_panel.get_axis_ranges()
-                    logger.info(f"Raw ranges from control panel: {ranges}")
                 else:
-                    logger.info(f"Control panel for {plot_type} doesn't support axis ranges, using auto ranges")
+                    logger.debug(f"Control panel for {plot_type} doesn't support axis ranges, using auto ranges")
                     return axis_ranges  # Return default auto ranges
                 
                 for axis_name, (min_val, max_val, is_auto) in ranges.items():
-                    logger.info(f"Processing axis {axis_name}: min={min_val}, max={max_val}, auto={is_auto}")
                     if not is_auto and min_val is not None and max_val is not None:
                         if axis_name == "x_axis":
                             axis_ranges["x_range"] = (min_val, max_val)
-                            logger.info(f"Set x_range to: {axis_ranges['x_range']}")
                         elif axis_name == "y_axis":
                             axis_ranges["y_range"] = (min_val, max_val)
-                            logger.info(f"Set y_range to: {axis_ranges['y_range']}")
                         elif axis_name == "z_axis":
                             axis_ranges["z_range"] = (min_val, max_val)
-                            logger.info(f"Set z_range to: {axis_ranges['z_range']}")
 
-        logger.info(f"Final axis ranges for {plot_type}: {axis_ranges}")
         return axis_ranges
 
     def _validate_and_setup_plotting(self):
@@ -5978,6 +6245,7 @@ work transparently when beneficial.
             show_95_ci=display_options.get("show_95_ci", True),
             show_data_points=display_options.get("show_data_points", True),
             show_acquisition=display_options.get("show_acquisition", False),
+            show_suggested_points=display_options.get("show_suggested_points", False),
             show_legend=display_options.get("show_legend", True),
             show_grid=display_options.get("show_grid", True),
             show_diagnostics=display_options.get("show_diagnostics", True),
@@ -6276,9 +6544,15 @@ work transparently when beneficial.
         if hasattr(self.sensitivity_fig, 'axes') and self.sensitivity_fig.axes:
             ax = self.sensitivity_fig.axes[0]
             if x_range:
-                ax.set_xlim(x_range)
+                # x_range is a tuple (min_val, max_val, is_auto)
+                min_val, max_val, is_auto = x_range
+                if not is_auto and min_val is not None and max_val is not None:
+                    ax.set_xlim(min_val, max_val)
             if y_range:
-                ax.set_ylim(y_range)
+                # y_range is a tuple (min_val, max_val, is_auto)
+                min_val, max_val, is_auto = y_range
+                if not is_auto and min_val is not None and max_val is not None:
+                    ax.set_ylim(min_val, max_val)
         
         self.sensitivity_canvas.draw()
         self.sensitivity_canvas.get_tk_widget().update()
@@ -6329,6 +6603,9 @@ work transparently when beneficial.
             
             # Update experimental data display
             self._update_experimental_data_display()
+            
+            # Update edit button state
+            self._update_edit_button_state()
             
             self.update_idletasks()
             self.update()
@@ -7771,7 +8048,7 @@ work transparently when beneficial.
             button_frame,
             text="Run Enhanced Validation",
             command=self._run_enhanced_validation,
-            bg=ModernTheme.ACCENT,  # Purple color for enhanced
+            bg="#8B5CF6",  # Purple color for enhanced
             fg="white",
             font=("Arial", 11),
             relief="flat",
@@ -7786,7 +8063,7 @@ work transparently when beneficial.
             button_frame,
             text="Run Batch Benchmark",
             command=self._run_batch_benchmark_validation,
-            bg=ModernTheme.WARNING,  # Orange color for batch
+            bg="#FF6B35",  # Orange color for batch
             fg="white",
             font=("Arial", 11, "bold"),
             relief="flat",
@@ -8445,8 +8722,8 @@ work transparently when beneficial.
                 label = tk.Label(
                     tooltip, 
                     text=text, 
-                    background=ModernTheme.WARNING_LIGHT, 
-                    foreground=ModernTheme.TEXT_PRIMARY,
+                    background="#FFFFCC", 
+                    foreground="#000000",
                     relief="solid", 
                     borderwidth=1,
                     font=("Arial", 9),

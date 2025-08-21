@@ -8,22 +8,6 @@ from tkinter import ttk
 import logging
 from typing import Dict, Any, Callable
 
-# Import modern light theme constants
-try:
-    from .gui import ModernTheme
-except ImportError:
-    # Fallback light theme if import fails
-    class ModernTheme:
-        PRIMARY = "#1976D2"
-        BACKGROUND = "#FAFAFA"
-        SURFACE = "#FFFFFF"
-        SURFACE_VARIANT = "#F5F5F5"
-        SURFACE_ELEVATED = "#FFFFFF"
-        TEXT_PRIMARY = "#212121"
-        TEXT_SECONDARY = "#757575"
-        BORDER = "#E0E0E0"
-        BORDER_SUBTLE = "#F0F0F0"
-
 logger = logging.getLogger(__name__)
 
 
@@ -51,19 +35,15 @@ class WindowPlotControlPanel:
         logger.info(f"Window plot control panel created for {plot_type}")
     
     def create_window(self):
-        """Create the control panel window with modern dark theme"""
+        """Create the control panel window"""
         if self.window is not None:
             self.show()
             return
             
         self.window = tk.Toplevel(self.parent)
-        self.window.title(f"{self.plot_type.replace('_', ' ').title()} Controls")
-        self.window.geometry("380x650")  # Slightly larger for better spacing
-        self.window.resizable(True, True)  # Allow resizing for better usability
-        
-        # Apply modern dark theme to window
-        self.window.configure(bg=ModernTheme.BACKGROUND)
-        self.window.minsize(320, 500)  # Set minimum size
+        self.window.title(f"🎛️ {self.plot_type.replace('_', ' ').title()} Controls")
+        self.window.geometry("350x600")
+        self.window.resizable(False, False)
         
         # Set window icon (if available)
         try:
@@ -71,16 +51,9 @@ class WindowPlotControlPanel:
         except:
             pass
         
-        # Create main frame with modern dark theme styling
-        main_frame = tk.Frame(
-            self.window, 
-            bg=ModernTheme.SURFACE,
-            relief="flat",
-            bd=1,
-            highlightbackground=ModernTheme.BORDER_SUBTLE,
-            highlightthickness=1
-        )
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+        # Create main frame with padding
+        main_frame = ttk.Frame(self.window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
         
         # Check if we have an enhanced control to embed
         if hasattr(self, 'enhanced_control'):
@@ -98,19 +71,13 @@ class WindowPlotControlPanel:
             except Exception as e:
                 logger.warning(f"Failed to embed enhanced control, using standard window controls: {e}")
         
-        # Modern header section for standard controls
-        header_frame = tk.Frame(main_frame, bg=ModernTheme.SURFACE_ELEVATED, height=60)
-        header_frame.pack(fill=tk.X, pady=(0, 20))
-        header_frame.pack_propagate(False)
+        # Title with icon (standard controls)
+        title_frame = ttk.Frame(main_frame)
+        title_frame.pack(fill=tk.X, pady=(0, 15))
         
-        title_label = tk.Label(
-            header_frame, 
-            text=f"{self.plot_type.replace('_', ' ').title()} Controls", 
-            bg=ModernTheme.SURFACE_ELEVATED,
-            fg=ModernTheme.TEXT_PRIMARY,
-            font=('Segoe UI', 16, 'bold')
-        )
-        title_label.pack(expand=True, pady=16)
+        title_label = ttk.Label(title_frame, text=f"📊 {self.plot_type.replace('_', ' ').title()} Controls", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack()
         
         # Create notebook for organized controls
         notebook = ttk.Notebook(main_frame)

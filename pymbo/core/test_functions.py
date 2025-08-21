@@ -19,7 +19,7 @@ Classes:
     DTLZ2: DTLZ2 test function implementation with GPU support
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.1.6 GPU Accelerated
+Version: 3.6.6 GPU Accelerated
 """
 
 import numpy as np

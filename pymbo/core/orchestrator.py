@@ -19,7 +19,7 @@ Integration with PyMBO:
 - Maintains all existing APIs while adding parallel features
 
 Author: Multi-Objective Optimization Laboratory
-Version: 4.0.0 - Hybrid Architecture
+Version: 3.6.6 - Hybrid Architecture
 """
 
 import asyncio

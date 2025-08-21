@@ -22,7 +22,7 @@ Functions:
     create_parallel_coordinates_control_panel: Factory function for control panel instantiation
 
 Author: PyMBO Development Team
-Version: 3.2.0 Enhanced (Popout Window)
+Version: 3.6.6 Enhanced (Popout Window)
 """
 
 import tkinter as tk

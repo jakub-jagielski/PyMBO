@@ -26,7 +26,7 @@ Functions:
     set_device(): Manually set device (for testing)
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.1.6 GPU Accelerated
+Version: 3.6.6 GPU Accelerated
 """
 
 import logging

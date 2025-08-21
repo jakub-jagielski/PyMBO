@@ -25,7 +25,7 @@ EfficientMultiObjectiveOptimizer from pymbo.core.enhanced_optimizer which
 provides 5-10x speedup and eliminates chaotic tensor logging.
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.2.0 Enhanced
+Version: 3.6.6 Enhanced
 """
 
 import ast
@@ -43,11 +43,21 @@ from torch import Tensor
 # BoTorch components for multi-objective optimization
 from botorch.acquisition.analytic import LogExpectedImprovement
 from botorch.acquisition.multi_objective import ExpectedHypervolumeImprovement
+
+# Modern acquisition functions - automatically replaces legacy EHVI/LogEI
+try:
+    from .modern_acquisition_core import create_modern_acquisition_function
+    MODERN_ACQUISITION_AVAILABLE = True
+    print("SUCCESS: Modern acquisition functions loaded (qNEHVI, qLogEI, UnifiedExponentialKernel)")
+except ImportError:
+    MODERN_ACQUISITION_AVAILABLE = False
+    print("WARNING: Using legacy acquisition functions (EHVI, LogEI)")
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import ModelListGP, SingleTaskGP
 from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch.optim import optimize_acqf
+from botorch.utils.constraints import get_outcome_constraint_transforms
 from botorch.utils.multi_objective.box_decompositions.non_dominated import (
     FastNondominatedPartitioning,
 )
@@ -57,6 +67,19 @@ from botorch.utils.transforms import normalize, unnormalize
 # GPyTorch components for Gaussian Process models
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.mlls import ExactMarginalLogLikelihood
+
+# Unified Exponential Kernel for mixed variables
+try:
+    from unified_kernel.kernels.unified_exponential import (
+        UnifiedExponentialKernel, 
+        is_mixed_variable_problem, 
+        get_variable_type_summary
+    )
+    UNIFIED_KERNEL_AVAILABLE = True
+except ImportError:
+    UNIFIED_KERNEL_AVAILABLE = False
+    import warnings
+    warnings.warn("Unified Exponential Kernel not available. Mixed variable problems will use standard kernels.", UserWarning)
 
 # Additional scientific libraries
 from scipy.stats import qmc  # Latin Hypercube Sampling
@@ -329,6 +352,115 @@ class SimpleParameterTransformer:
             params_dict = self.tensor_to_params(unit_tensors[i])
             batch_results.append(params_dict)
         return batch_results
+    
+    def validate_parameter_constraints(self, params_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """
+        Validates that parameters satisfy their Range constraints.
+        Note: Target goals are now objectives, not constraints, so no validation needed.
+        
+        Args:
+            params_dict: Parameters in original space
+            
+        Returns:
+            Tuple of (is_valid, list_of_violated_constraints)
+        """
+        violations = []
+        
+        for name, config in self.params_config.items():
+            goal = config.get("goal", "None")
+            value = params_dict.get(name)
+            
+            if goal == "Target":
+                # Target goals are now objectives, not constraints - no validation needed
+                pass
+            
+            elif goal == "Range" and "range_bounds" in config:
+                range_bounds = config["range_bounds"]
+                if len(range_bounds) == 2:
+                    range_min, range_max = range_bounds
+                    if value < range_min or value > range_max:
+                        violations.append(f"Parameter '{name}' violates Range constraint: "
+                                        f"{value} not in range [{range_min}, {range_max}]")
+        
+        return len(violations) == 0, violations
+    
+    def enforce_parameter_constraints(self, params_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enforces Range parameter constraints by clipping values to feasible regions.
+        Note: Target goals are now objectives, not constraints, so no enforcement needed.
+        Used as a safety mechanism to ensure generated suggestions are valid.
+        
+        Args:
+            params_dict: Parameters in original space
+            
+        Returns:
+            Constrained parameters in original space
+        """
+        constrained_params = params_dict.copy()
+        
+        for name, config in self.params_config.items():
+            goal = config.get("goal", "None")
+            value = constrained_params.get(name)
+            
+            if goal == "Target":
+                # Target goals are now objectives, not constraints - no enforcement needed
+                pass
+            
+            elif goal == "Range" and "range_bounds" in config:
+                # For Range constraints, clamp to feasible bounds
+                range_bounds = config["range_bounds"]
+                if len(range_bounds) == 2:
+                    range_min, range_max = range_bounds
+                    if value < range_min:
+                        constrained_params[name] = range_min
+                        logger.debug(f"Enforced Range constraint for '{name}': {value} -> {range_min}")
+                    elif value > range_max:
+                        constrained_params[name] = range_max
+                        logger.debug(f"Enforced Range constraint for '{name}': {value} -> {range_max}")
+        
+        return constrained_params
+
+
+def create_kernel_for_parameters(params_config: Dict[str, Dict[str, Any]], ard_num_dims: int) -> object:
+    """
+    Create appropriate kernel based on parameter types.
+    
+    Uses UnifiedExponentialKernel for all parameter configurations to ensure 
+    consistency with modern acquisition functions and optimal performance.
+    
+    Args:
+        params_config: PyMBO parameter configuration dictionary
+        ard_num_dims: Number of dimensions for ARD
+        
+    Returns:
+        Configured kernel (UnifiedExponentialKernel with MaternKernel fallback)
+    """
+    # Check if unified kernel is available and if we have mixed variables
+    if UNIFIED_KERNEL_AVAILABLE and params_config:
+        try:
+            # Check for mixed variables or non-continuous variables
+            has_mixed_vars = is_mixed_variable_problem(params_config)
+            var_summary = get_variable_type_summary(params_config)
+            
+            has_categorical = var_summary['type_counts']['categorical'] > 0
+            has_discrete = var_summary['type_counts']['discrete'] > 0
+            
+            if has_mixed_vars or has_categorical or has_discrete:
+                logger.info(f"Using UnifiedExponentialKernel for mixed variables: "
+                           f"{var_summary['type_counts']}")
+                return UnifiedExponentialKernel(params_config, ard_num_dims=ard_num_dims)
+            else:
+                logger.info("Continuous-only problem - using UnifiedExponentialKernel for consistency")
+                return UnifiedExponentialKernel(params_config, ard_num_dims=ard_num_dims)
+                
+        except Exception as e:
+            logger.warning(f"Failed to create UnifiedExponentialKernel ({e}), falling back to MaternKernel")
+            return MaternKernel(nu=2.5, ard_num_dims=ard_num_dims)
+    else:
+        # Fallback to standard kernel
+        if not UNIFIED_KERNEL_AVAILABLE:
+            logger.debug("UnifiedExponentialKernel not available, using MaternKernel")
+        return MaternKernel(nu=2.5, ard_num_dims=ard_num_dims)
 
 
 class EnhancedMultiObjectiveOptimizer:
@@ -377,9 +509,19 @@ class EnhancedMultiObjectiveOptimizer:
         if not responses_config:
             raise ValueError("At least one optimization objective must be defined")
         
+        print("🔥 ENHANCED OPTIMIZER INITIALIZATION 🔥")
+        print(f"🔥 Received params_config: {params_config}")
+        print(f"🔥 Received responses_config: {responses_config}")
+        
         self.params_config = params_config
         self.responses_config = responses_config
         self.general_constraints = general_constraints or []
+        
+        print("🔥 OPTIMIZER CONFIG STORED:")
+        for name, config in self.params_config.items():
+            print(f"🔥   Parameter '{name}': goal='{config.get('goal', 'MISSING')}', config={config}")
+        for name, config in self.responses_config.items():
+            print(f"🔥   Response '{name}': goal='{config.get('goal', 'MISSING')}', config={config}")
         
         # Data subsampling configuration for performance optimization
         if max_gp_points is None:
@@ -514,6 +656,20 @@ class EnhancedMultiObjectiveOptimizer:
                 # Extract optimization weight (default to 1.0 if not specified)
                 weight = config.get("optimization_weight", 1.0)
                 self.objective_weights.append(weight)
+            
+            elif goal == "Target":
+                # Target goals become deviation minimization objectives
+                target_value = config.get("target_value")
+                if target_value is not None:
+                    objective_name = f"{name}_target_deviation"
+                    self.objective_names.append(objective_name)
+                    self.objective_directions.append(-1)  # Minimize deviation
+                    
+                    # Extract optimization weight (default to 1.0 if not specified)
+                    weight = config.get("optimization_weight", 1.0)
+                    self.objective_weights.append(weight)
+                    
+                    logger.info(f"Added Target deviation objective '{objective_name}' for target={target_value}")
 
         # Check if we have non-uniform weights (indicating user-defined importance)
         self.has_weighted_objectives = len(set(self.objective_weights)) > 1
@@ -529,6 +685,83 @@ class EnhancedMultiObjectiveOptimizer:
 
         if not self.objective_names:
             raise ValueError("At least one optimization objective must be defined.")
+        
+        # Setup parameter constraints (Target and Range goals)
+        self._setup_parameter_constraints()
+
+    def _setup_parameter_constraints(self) -> None:
+        """
+        Sets up parameter constraints for Range goals following academic standards.
+        
+        Range goals create inequality constraints of the form: range_min <= param <= range_max
+        Note: Target goals are now handled as deviation minimization objectives, not constraints.
+        
+        These constraints are used during acquisition function optimization to ensure
+        suggested points satisfy the specified parameter constraints.
+        """
+        self.parameter_constraints = []
+        self.constraint_tolerance = 1e-3  # Academic standard tolerance for constraint satisfaction
+        
+        for name, config in self.params_config.items():
+            goal = config.get("goal", "None")
+            param_idx = self.parameter_transformer.param_names.index(name)
+            
+            if goal == "Target":
+                # Target goals are now handled as objectives, not constraints
+                logger.info(f"Skipping Target constraint for parameter '{name}' - now handled as deviation objective")
+            
+            elif goal == "Range":
+                # Range constraint: inequality constraints for bounds
+                range_bounds = config.get("range_bounds")
+                if range_bounds is not None and len(range_bounds) == 2:
+                    range_min, range_max = range_bounds
+                    param_bounds = self.parameter_transformer.bounds[param_idx]
+                    
+                    # Transform range to normalized space
+                    normalized_min = (range_min - param_bounds[0]) / (param_bounds[1] - param_bounds[0])
+                    normalized_max = (range_max - param_bounds[0]) / (param_bounds[1] - param_bounds[0])
+                    normalized_min = max(0.0, min(1.0, normalized_min))
+                    normalized_max = max(0.0, min(1.0, normalized_max))
+                    
+                    # Create constraint functions: x[param_idx] >= normalized_min and x[param_idx] <= normalized_max
+                    def create_range_constraints(idx, min_val, max_val):
+                        def min_constraint(x):
+                            return x[..., idx] - min_val
+                        def max_constraint(x):
+                            return max_val - x[..., idx]
+                        return min_constraint, max_constraint
+                    
+                    min_constraint, max_constraint = create_range_constraints(param_idx, normalized_min, normalized_max)
+                    self.parameter_constraints.extend([min_constraint, max_constraint])
+                    
+                    logger.info(f"Added Range constraint for parameter '{name}': range=[{range_min}, {range_max}] "
+                               f"(normalized: [{normalized_min:.4f}, {normalized_max:.4f}])")
+        
+        logger.info(f"Setup {len(self.parameter_constraints)} parameter constraints")
+
+    def _calculate_target_deviations(self, data_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate target deviation objectives for parameters with Target goals.
+        
+        Args:
+            data_df: DataFrame containing experimental data
+            
+        Returns:
+            DataFrame with added target deviation columns
+        """
+        updated_df = data_df.copy()
+        
+        for name, config in self.params_config.items():
+            goal = config.get("goal", "None")
+            if goal == "Target":
+                target_value = config.get("target_value")
+                if target_value is not None and name in updated_df.columns:
+                    deviation_column = f"{name}_target_deviation"
+                    # Calculate absolute deviation from target
+                    updated_df[deviation_column] = abs(updated_df[name] - target_value)
+                    logger.debug(f"Calculated target deviations for '{name}' with target={target_value}")
+        
+        return updated_df
 
     def _initialize_data_storage(self) -> None:
         """
@@ -621,12 +854,15 @@ class EnhancedMultiObjectiveOptimizer:
             n_new_points = len(data_df)
             logger.info(f"📥 Adding {n_new_points} new experimental data points to optimizer")
 
+            # Calculate target deviations for new data
+            data_with_deviations = self._calculate_target_deviations(data_df)
+            
             # Concatenate new data with existing experimental data
             if self.experimental_data.empty:
-                self.experimental_data = data_df.copy()
+                self.experimental_data = data_with_deviations.copy()
             else:
                 self.experimental_data = pd.concat(
-                    [self.experimental_data, data_df], ignore_index=True
+                    [self.experimental_data, data_with_deviations], ignore_index=True
                 )
             
             # Apply data subsampling/sliding window for performance optimization
@@ -1551,7 +1787,7 @@ class EnhancedMultiObjectiveOptimizer:
 
             attempts += 1
 
-        logger.info(f"Generated {len(suggestions)} random suggestions.")
+        logger.debug(f"Generated {len(suggestions)} random suggestions.")
         return suggestions
 
     def _are_params_similar(
@@ -1635,8 +1871,8 @@ class EnhancedMultiObjectiveOptimizer:
                 # - `ScaleKernel` scales the output of the Matern kernel.
                 # - `Normalize` input transform normalizes input features to [0, 1].
                 # - `Standardize` outcome transform standardizes output features to zero mean and unit variance.
-                # Fix GPyTorch compatibility issue - create kernel with proper initialization
-                base_kernel = MaternKernel(nu=2.5, ard_num_dims=X_filtered.shape[-1])
+                # Create appropriate kernel based on parameter types (mixed variables support)
+                base_kernel = create_kernel_for_parameters(self.params_config, X_filtered.shape[-1])
                 covar_module = ScaleKernel(base_kernel)
                 
                 model = SingleTaskGP(
@@ -1685,17 +1921,18 @@ class EnhancedMultiObjectiveOptimizer:
         """
         Sets up the appropriate acquisition function based on the number of objectives and weights.
         
-        For single-objective optimization, Expected Improvement (EI) is used.
-        For multi-objective optimization:
-        - If objectives have non-uniform weights, a weighted scalarization approach is used
-        - Otherwise, Expected Hypervolume Improvement (EHVI) is used for Pareto optimization
+        Modern version automatically uses:
+        - qLogEI for single-objective optimization (improved numerical stability)
+        - qNEHVI for multi-objective optimization (2024 state-of-the-art)
+        - UnifiedExponentialKernel for mixed variable types (continuous, discrete, categorical)
+        
+        Falls back to legacy EHVI/LogEI if modern methods are unavailable.
 
         Args:
             models (Union[SingleTaskGP, ModelListGP]): The fitted GP model(s).
 
         Returns:
-            Optional[Union[LogExpectedImprovement, ExpectedHypervolumeImprovement]]:
-                The initialized acquisition function, or None if setup fails.
+            Modern acquisition function (qNEHVI/qLogEI) or legacy fallback.
         """
         try:
             if not hasattr(self, "train_Y") or self.train_Y.shape[0] == 0:
@@ -1703,6 +1940,40 @@ class EnhancedMultiObjectiveOptimizer:
                     "No training data available to set up acquisition function."
                 )
                 return None
+            
+            # Try modern acquisition functions first
+            if MODERN_ACQUISITION_AVAILABLE:
+                try:
+                    # Extract parameter configuration for UnifiedExponentialKernel
+                    params_config = getattr(self, 'parameters', None)
+                    if not params_config and hasattr(self, 'parameter_transformer'):
+                        # Try to reconstruct params_config from parameter_transformer
+                        param_names = getattr(self.parameter_transformer, 'param_names', [])
+                        params_config = {}
+                        for name in param_names:
+                            # Default to continuous for safety if we can't determine type
+                            params_config[name] = {'type': 'continuous', 'bounds': [0, 1]}
+                    
+                    # Create modern acquisition function
+                    logger.info("Attempting to create modern acquisition function (qNEHVI/qLogEI)")
+                    modern_acq = create_modern_acquisition_function(
+                        train_X=self.train_X,
+                        train_Y=self.train_Y,
+                        objective_names=self.objective_names,
+                        params_config=params_config
+                    )
+                    
+                    if modern_acq is not None:
+                        logger.info(f"SUCCESS: Created modern acquisition function: {type(modern_acq).__name__}")
+                        return modern_acq
+                    else:
+                        logger.warning("Modern acquisition function creation failed, falling back to legacy")
+                        
+                except Exception as e:
+                    logger.warning(f"Modern acquisition function failed: {e}, falling back to legacy")
+            
+            # Fall back to legacy acquisition functions
+            logger.info("Using legacy acquisition functions (EHVI/LogEI)")
 
             if len(self.objective_names) > 1:
                 # Multi-objective optimization
@@ -2052,14 +2323,22 @@ class EnhancedMultiObjectiveOptimizer:
                 return self._generate_random_samples(n_suggestions)
             
             try:
-                # Try regular optimization (Windows doesn't support SIGALRM timeout)
-                candidates, _ = optimize_acqf(
-                    acq_function=acq_func,
-                    bounds=bounds,
-                    q=n_suggestions,
-                    num_restarts=adaptive_restarts,
-                    raw_samples=adaptive_raw_samples,
-                )
+                # Try regular optimization with parameter constraints (Windows doesn't support SIGALRM timeout)
+                # Include parameter constraints if any are defined
+                optimization_kwargs = {
+                    "acq_function": acq_func,
+                    "bounds": bounds,
+                    "q": n_suggestions,
+                    "num_restarts": adaptive_restarts,
+                    "raw_samples": adaptive_raw_samples,
+                }
+                
+                # Add parameter constraints if defined (Target/Range goals)
+                if hasattr(self, 'parameter_constraints') and self.parameter_constraints:
+                    optimization_kwargs["inequality_constraints"] = self.parameter_constraints
+                    logger.debug(f"Using {len(self.parameter_constraints)} parameter constraints in acquisition optimization")
+                
+                candidates, _ = optimize_acqf(**optimization_kwargs)
                 
                 optimization_time = time.time() - start_time
                 if optimization_time > max_optimization_time:
@@ -2071,20 +2350,36 @@ class EnhancedMultiObjectiveOptimizer:
             except Exception as e:
                 logger.warning(f"Acquisition optimization failed: {e}")
                 logger.info("Falling back to minimal optimization settings")
-                # Emergency fallback: use absolute minimum settings
-                candidates, _ = optimize_acqf(
-                    acq_function=acq_func,
-                    bounds=bounds,
-                    q=n_suggestions,
-                    num_restarts=1,
-                    raw_samples=2,
-                )
+                # Emergency fallback: use absolute minimum settings with constraints if available
+                fallback_kwargs = {
+                    "acq_function": acq_func,
+                    "bounds": bounds,
+                    "q": n_suggestions,
+                    "num_restarts": 1,
+                    "raw_samples": 2,
+                }
+                
+                # Include constraints in fallback if they exist
+                if hasattr(self, 'parameter_constraints') and self.parameter_constraints:
+                    fallback_kwargs["inequality_constraints"] = self.parameter_constraints
+                    logger.debug("Using parameter constraints in fallback optimization")
+                
+                candidates, _ = optimize_acqf(**fallback_kwargs)
                 optimization_time = time.time() - start_time
 
             suggestions = []
             for i in range(candidates.shape[0]):
                 # Convert the normalized candidate tensor back to a parameter dictionary.
                 param_dict = self.parameter_transformer.tensor_to_params(candidates[i])
+                
+                # Validate and enforce parameter constraints if defined
+                if hasattr(self, 'parameter_constraints') and self.parameter_constraints:
+                    is_valid, violations = self.parameter_transformer.validate_parameter_constraints(param_dict)
+                    if not is_valid:
+                        logger.debug(f"Constraint violations detected: {violations}")
+                        param_dict = self.parameter_transformer.enforce_parameter_constraints(param_dict)
+                        logger.debug("Applied constraint enforcement to suggestion")
+                
                 suggestions.append(param_dict)
 
             # Cache successful candidates for potential reuse
@@ -2165,7 +2460,7 @@ class EnhancedMultiObjectiveOptimizer:
                 pareto_Y_original.cpu().numpy(), columns=self.objective_names
             )
 
-            logger.info(f"Found {len(pareto_X_df)} points on the Pareto front.")
+            logger.debug(f"Found {len(pareto_X_df)} points on the Pareto front.")
             return pareto_X_df, pareto_obj_df, pareto_indices.cpu().numpy()
 
         except Exception as e:
@@ -2299,6 +2594,13 @@ class EnhancedMultiObjectiveOptimizer:
                                     Returns an empty dictionary if no models can be built.
         """
         try:
+            # Debug logging to diagnose loading issues
+            logger.debug(f'get_response_models() called')
+            logger.debug(f'experimental_data shape: {self.experimental_data.shape if hasattr(self, "experimental_data") and not self.experimental_data.empty else "EMPTY"}')
+            if hasattr(self, 'experimental_data') and not self.experimental_data.empty:
+                logger.debug(f'experimental_data columns: {list(self.experimental_data.columns)}')
+            logger.debug(f'responses_config keys: {list(self.responses_config.keys()) if self.responses_config else "NONE"}')
+            logger.debug(f'parameter_transformer available: {hasattr(self, "parameter_transformer")}')
             models_dict = {}
 
             # Get candidate response names - try config first, then auto-detect from data
@@ -2353,6 +2655,7 @@ class EnhancedMultiObjectiveOptimizer:
                             Y_data.append(mean_value)
 
                 # Build a GP model only if sufficient data points are available for this response.
+                logger.debug(f'Response {response_name}: {len(Y_data)} data points (need {MIN_DATA_POINTS_FOR_GP})')
                 if len(Y_data) >= MIN_DATA_POINTS_FOR_GP:
                     X_tensor = torch.stack(X_data).to(self.device, self.dtype)
                     Y_tensor = torch.tensor(
@@ -2362,12 +2665,13 @@ class EnhancedMultiObjectiveOptimizer:
                     )  # Add feature dimension.
 
                     # Initialize and fit a SingleTaskGP model for this response.
+                    # Create appropriate kernel based on parameter types (mixed variables support)
+                    base_kernel = create_kernel_for_parameters(self.params_config, X_tensor.shape[-1])
+                    
                     model = SingleTaskGP(
                         train_X=X_tensor,
                         train_Y=Y_tensor,
-                        covar_module=ScaleKernel(
-                            MaternKernel(nu=2.5, ard_num_dims=X_tensor.shape[-1])
-                        ),
+                        covar_module=ScaleKernel(base_kernel),
                         input_transform=Normalize(d=X_tensor.shape[-1]),
                         outcome_transform=Standardize(m=1),
                     )

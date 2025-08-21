@@ -8,7 +8,7 @@ Classes:
     RobustMOBOAlgorithm: Robust MOBO with automatic fallbacks
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.2.0 Enhanced - Robust Implementation
+Version: 3.6.6 Enhanced - Robust Implementation
 """
 
 import numpy as np

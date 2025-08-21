@@ -21,7 +21,7 @@ Functions:
     convert_stars_to_weights: Converts star ratings to normalized weights
 
 Author: PyMBO Development Team
-Version: 3.2.0 Enhanced
+Version: 3.6.6 Enhanced
 """
 
 import tkinter as tk
@@ -30,26 +30,21 @@ import logging
 from typing import Dict, Any, Callable, List, Optional, Tuple
 import math
 
-# Import modern dark theme constants from main GUI module
+# Import color constants from main GUI module
 try:
-    from .gui import ModernTheme
+    from .gui import (
+        COLOR_PRIMARY, COLOR_SECONDARY, COLOR_SUCCESS, COLOR_WARNING, 
+        COLOR_ERROR, COLOR_BACKGROUND, COLOR_SURFACE
+    )
 except ImportError:
-    # Fallback light theme color scheme if import fails
-    class ModernTheme:
-        PRIMARY = "#1976D2"
-        SECONDARY = "#757575"
-        SUCCESS = "#4CAF50"
-        WARNING = "#FF9800"
-        ERROR = "#F44336"
-        BACKGROUND = "#121212"
-        SURFACE = "#FFFFFF"
-        SURFACE_VARIANT = "#2D2D2D"
-        SURFACE_ELEVATED = "#323232"
-        TEXT_PRIMARY = "#212121"
-        TEXT_SECONDARY = "#BDBDBD"
-        TEXT_ACCENT = "#4FC3F7"
-        BORDER = "#404040"
-        BORDER_FOCUS = "#4FC3F7"
+    # Fallback color scheme if import fails
+    COLOR_PRIMARY = "#1976D2"
+    COLOR_SECONDARY = "#424242"
+    COLOR_SUCCESS = "#4CAF50"
+    COLOR_WARNING = "#FF9800"
+    COLOR_ERROR = "#F44336"
+    COLOR_BACKGROUND = "#FAFAFA"
+    COLOR_SURFACE = "#FFFFFF"
 
 logger = logging.getLogger(__name__)
 
@@ -75,27 +70,23 @@ class StarRatingWidget:
         self.rating = max(1, min(5, initial_rating))  # Ensure rating is 1-5
         self.callback = callback
         
-        # Create frame for stars with dark theme
-        self.frame = tk.Frame(parent, bg=ModernTheme.SURFACE)
+        # Create frame for stars
+        self.frame = tk.Frame(parent, bg=COLOR_SURFACE)
         
-        # Create star buttons with modern dark theme styling
+        # Create star buttons
         self.star_buttons = []
         for i in range(5):
             btn = tk.Button(
                 self.frame,
                 text="★",
-                font=("Segoe UI", 18, "normal"),  # Larger, modern font
+                font=("Arial", 16),
                 width=2,
                 height=1,
                 relief="flat",
                 bd=0,
-                bg=ModernTheme.SURFACE,
-                fg=ModernTheme.TEXT_SECONDARY,
-                activebackground=ModernTheme.SURFACE_ELEVATED,
-                cursor="hand2",
                 command=lambda star_num=i+1: self._set_rating(star_num)
             )
-            btn.pack(side=tk.LEFT, padx=2)  # Slightly more spacing
+            btn.pack(side=tk.LEFT, padx=1)
             self.star_buttons.append(btn)
         
         # Update visual display
@@ -109,23 +100,23 @@ class StarRatingWidget:
             self.callback(rating)
     
     def _update_stars(self) -> None:
-        """Update the visual appearance of stars based on current rating with dark theme."""
+        """Update the visual appearance of stars based on current rating."""
         for i, btn in enumerate(self.star_buttons):
             if i < self.rating:
-                # Filled star - bright orange/amber for visibility in dark theme
+                # Filled star
                 btn.config(
-                    fg=ModernTheme.WARNING,  # Bright amber color for filled stars
-                    bg=ModernTheme.SURFACE,
-                    activeforeground=ModernTheme.WARNING,
-                    activebackground=ModernTheme.SURFACE_ELEVATED
+                    fg=COLOR_WARNING,  # Gold/orange color for filled stars
+                    bg=COLOR_SURFACE,
+                    activeforeground=COLOR_WARNING,
+                    activebackground=COLOR_BACKGROUND
                 )
             else:
-                # Empty star - darker color but still visible
+                # Empty star
                 btn.config(
-                    fg=ModernTheme.TEXT_SECONDARY,  # Subdued color for empty stars
-                    bg=ModernTheme.SURFACE,
-                    activeforeground=ModernTheme.TEXT_PRIMARY,
-                    activebackground=ModernTheme.SURFACE_ELEVATED
+                    fg=COLOR_SECONDARY,  # Gray color for empty stars
+                    bg=COLOR_SURFACE,
+                    activeforeground=COLOR_SECONDARY,
+                    activebackground=COLOR_BACKGROUND
                 )
     
     def get_rating(self) -> int:
@@ -188,17 +179,14 @@ class ResponseImportanceDialog:
         logger.info(f"Response importance dialog initialized for {len(self.response_names)} responses")
     
     def _create_dialog(self) -> None:
-        """Create the main dialog window with modern dark theme."""
+        """Create the main dialog window."""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Set Response Importance")
-        self.dialog.geometry("520x650")  # Slightly larger for better spacing
+        self.dialog.geometry("500x600")
         self.dialog.resizable(True, True)
         
-        # Set modern dark theme background
-        self.dialog.configure(bg=ModernTheme.BACKGROUND)
-        
         # Set minimum size
-        self.dialog.minsize(480, 550)
+        self.dialog.minsize(450, 500)
         
         # Make dialog modal
         self.dialog.transient(self.parent)
@@ -240,68 +228,57 @@ class ResponseImportanceDialog:
         self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
     
     def _create_header(self) -> None:
-        """Create the dialog header with title and instructions using modern dark theme."""
-        # Modern header with gradient-like appearance
-        header_frame = tk.Frame(self.dialog, bg=ModernTheme.SURFACE_ELEVATED, height=80)
+        """Create the dialog header with title and instructions."""
+        header_frame = tk.Frame(self.dialog, bg=COLOR_PRIMARY, height=60)
         header_frame.pack(fill=tk.X)
         header_frame.pack_propagate(False)
         
-        # Title with better spacing
+        # Title
         title_label = tk.Label(
             header_frame,
             text="Response Importance Ratings",
-            bg=ModernTheme.SURFACE_ELEVATED,
-            fg=ModernTheme.TEXT_PRIMARY,
-            font=("Segoe UI", 16, "bold")
+            bg=COLOR_PRIMARY,
+            fg=COLOR_SURFACE,
+            font=("Arial", 14, "bold")
         )
-        title_label.pack(expand=True, pady=(16, 8))
+        title_label.pack(expand=True)
         
-        # Subtitle for context
-        subtitle_label = tk.Label(
-            header_frame,
-            text="Configure optimization priorities for multi-objective analysis",
-            bg=ModernTheme.SURFACE_ELEVATED,
-            fg=ModernTheme.TEXT_SECONDARY,
-            font=("Segoe UI", 10, "normal")
-        )
-        subtitle_label.pack(pady=(0, 16))
-        
-        # Instructions with improved formatting
-        instructions_frame = tk.Frame(self.dialog, bg=ModernTheme.SURFACE)
-        instructions_frame.pack(fill=tk.X, padx=24, pady=16)
+        # Instructions
+        instructions_frame = tk.Frame(self.dialog, bg=COLOR_SURFACE)
+        instructions_frame.pack(fill=tk.X, padx=20, pady=10)
         
         instructions_text = (
-            "Set the importance level for each response variable:\n\n"
-            "★☆☆☆☆ Low Priority          ★★★☆☆ Balanced Priority          ★★★★★ Critical Priority\n\n"
-            "Higher ratings give the response more weight in optimization decisions."
+            "Set the importance of each response for optimization:\n"
+            "★☆☆☆☆ = Low importance    ★★★☆☆ = Medium importance    ★★★★★ = Very high importance\n"
+            "These ratings will affect how the algorithm prioritizes different objectives."
         )
         
         instructions_label = tk.Label(
             instructions_frame,
             text=instructions_text,
-            bg=ModernTheme.SURFACE,
-            fg=ModernTheme.TEXT_SECONDARY,
-            font=("Segoe UI", 10, "normal"),
+            bg=COLOR_SURFACE,
+            fg=COLOR_SECONDARY,
+            font=("Arial", 9),
             justify=tk.LEFT,
-            wraplength=480
+            wraplength=450
         )
-        instructions_label.pack(anchor="w", padx=16, pady=8)
+        instructions_label.pack(anchor="w")
     
     def _create_ratings_section(self) -> None:
-        """Create the section with star ratings for each response using modern dark theme."""
-        # Main frame for ratings with modern styling
-        main_frame = tk.Frame(self.dialog, bg=ModernTheme.BACKGROUND)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=24, pady=8)
+        """Create the section with star ratings for each response."""
+        # Main frame for ratings with fixed height to leave space for preview and buttons
+        main_frame = tk.Frame(self.dialog, bg=COLOR_SURFACE)
+        main_frame.pack(fill=tk.X, padx=20, pady=10)
         
-        # Calculate appropriate height for ratings area
-        ratings_height = min(280, len(self.response_names) * 80 + 60)  # More generous spacing
+        # Set a reasonable height for the ratings area
+        ratings_height = min(250, len(self.response_names) * 70 + 50)  # Dynamic but capped
         main_frame.config(height=ratings_height)
         main_frame.pack_propagate(False)  # Maintain fixed height
         
-        # Create scrollable frame for responses with dark theme
-        canvas = tk.Canvas(main_frame, bg=ModernTheme.SURFACE, highlightthickness=0)
+        # Create scrollable frame for responses
+        canvas = tk.Canvas(main_frame, bg=COLOR_SURFACE, highlightthickness=0)
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=ModernTheme.SURFACE)
+        scrollable_frame = tk.Frame(canvas, bg=COLOR_SURFACE)
         
         scrollable_frame.bind(
             '<Configure>',
@@ -327,44 +304,41 @@ class ResponseImportanceDialog:
         scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
     
     def _create_rating_row(self, parent: tk.Widget, response_name: str, row_index: int) -> None:
-        """Create a rating row for a single response with modern dark theme."""
-        # Row frame with alternating background for better visual separation
-        bg_color = ModernTheme.SURFACE_VARIANT if row_index % 2 == 0 else ModernTheme.SURFACE
+        """Create a rating row for a single response."""
+        # Row frame
         row_frame = tk.Frame(
             parent, 
-            bg=bg_color,
+            bg=COLOR_BACKGROUND if row_index % 2 == 0 else COLOR_SURFACE,
             relief="flat",
-            bd=0,  # Remove border for cleaner look
-            highlightbackground=ModernTheme.BORDER_SUBTLE,
-            highlightthickness=1
+            bd=1
         )
-        row_frame.pack(fill=tk.X, padx=8, pady=6)  # Better spacing
+        row_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        # Response info frame with modern styling
-        info_frame = tk.Frame(row_frame, bg=bg_color)
-        info_frame.pack(fill=tk.X, padx=16, pady=12)
+        # Response info frame
+        info_frame = tk.Frame(row_frame, bg=row_frame['bg'])
+        info_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Response name and goal with modern typography
+        # Response name and goal
         response_config = self.responses_config[response_name]
         goal = response_config.get('goal', 'Unknown')
         
         name_label = tk.Label(
             info_frame,
             text=f"{response_name}",
-            bg=bg_color,
-            fg=ModernTheme.TEXT_PRIMARY,
-            font=("Segoe UI", 11, "bold")
+            bg=row_frame['bg'],
+            fg=COLOR_SECONDARY,
+            font=("Arial", 11, "bold")
         )
         name_label.pack(side=tk.LEFT)
         
         goal_label = tk.Label(
             info_frame,
             text=f"({goal})",
-            bg=bg_color,
-            fg=ModernTheme.TEXT_ACCENT,
-            font=("Segoe UI", 9, "normal")
+            bg=row_frame['bg'],
+            fg=COLOR_WARNING,
+            font=("Arial", 9, "italic")
         )
-        goal_label.pack(side=tk.LEFT, padx=(12, 0))
+        goal_label.pack(side=tk.LEFT, padx=(10, 0))
         
         # Star rating widget
         def on_rating_change(rating):

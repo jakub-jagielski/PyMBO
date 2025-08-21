@@ -15,7 +15,7 @@ Key Features:
 - Cache management controls
 
 Author: Multi-Objective Optimization Laboratory
-Version: 4.0.0 - Hybrid Architecture
+Version: 3.6.6 - Hybrid Architecture
 """
 
 import logging
@@ -42,12 +42,11 @@ class ParallelOptimizationControls:
         self.parent_frame = parent_frame
         self.controller = controller
         
-        # Create main frame with white background
+        # Create main frame
         self.main_frame = ttk.LabelFrame(
             parent_frame, 
             text="🚀 Parallel Optimization", 
-            padding="10",
-            style="WhiteBG.TLabelFrame"
+            padding="10"
         )
         self.main_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
@@ -67,13 +66,12 @@ class ParallelOptimizationControls:
         self.benchmark_frame = ttk.LabelFrame(
             self.main_frame, 
             text="Strategy Benchmarking", 
-            padding="5",
-            style="WhiteBG.TLabelFrame"
+            padding="5"
         )
         
         # Strategy selection
         ttk.Label(self.benchmark_frame, text="Strategies to Compare:").pack(anchor="w")
-        self.strategy_frame = ttk.Frame(self.benchmark_frame, style="WhiteBG.TFrame")
+        self.strategy_frame = ttk.Frame(self.benchmark_frame)
         self.strategy_frame.pack(fill="x", pady=5)
         
         # Strategy checkboxes
@@ -100,7 +98,7 @@ class ParallelOptimizationControls:
             self._add_tooltip(cb, tooltip)
         
         # Number of suggestions
-        suggestion_frame = ttk.Frame(self.benchmark_frame, style="WhiteBG.TFrame")
+        suggestion_frame = ttk.Frame(self.benchmark_frame)
         suggestion_frame.pack(fill="x", pady=5)
         
         ttk.Label(suggestion_frame, text="Suggestions per strategy:").pack(side="left")
@@ -137,15 +135,14 @@ class ParallelOptimizationControls:
         self.whatif_frame = ttk.LabelFrame(
             self.main_frame, 
             text="What-If Analysis", 
-            padding="5",
-            style="WhiteBG.TLabelFrame"
+            padding="5"
         )
         
         # Scenario builder
         ttk.Label(self.whatif_frame, text="Analysis Scenarios:").pack(anchor="w")
         
         # Scenario listbox with scrollbar
-        scenario_list_frame = ttk.Frame(self.whatif_frame, style="WhiteBG.TFrame")
+        scenario_list_frame = ttk.Frame(self.whatif_frame)
         scenario_list_frame.pack(fill="both", expand=True, pady=5)
         
         self.scenario_listbox = tk.Listbox(scenario_list_frame, height=4)
@@ -166,7 +163,7 @@ class ParallelOptimizationControls:
             self.scenario_listbox.insert(tk.END, scenario)
         
         # Scenario control buttons
-        scenario_button_frame = ttk.Frame(self.whatif_frame, style="WhiteBG.TFrame")
+        scenario_button_frame = ttk.Frame(self.whatif_frame)
         scenario_button_frame.pack(fill="x", pady=5)
         
         ttk.Button(
@@ -203,12 +200,11 @@ class ParallelOptimizationControls:
         self.data_frame = ttk.LabelFrame(
             self.main_frame, 
             text="Parallel Data Loading", 
-            padding="5",
-            style="WhiteBG.TLabelFrame"
+            padding="5"
         )
         
         # Chunk size setting
-        chunk_frame = ttk.Frame(self.data_frame, style="WhiteBG.TFrame")
+        chunk_frame = ttk.Frame(self.data_frame)
         chunk_frame.pack(fill="x", pady=5)
         
         ttk.Label(chunk_frame, text="Chunk size for parallel processing:").pack(side="left")
@@ -238,8 +234,7 @@ class ParallelOptimizationControls:
         self.perf_frame = ttk.LabelFrame(
             self.main_frame, 
             text="Performance & Settings", 
-            padding="5",
-            style="WhiteBG.TLabelFrame"
+            padding="5"
         )
         
         # Statistics display
@@ -247,7 +242,7 @@ class ParallelOptimizationControls:
         self.stats_text.pack(fill="both", expand=True, pady=5)
         
         # Control buttons
-        button_frame = ttk.Frame(self.perf_frame, style="WhiteBG.TFrame")
+        button_frame = ttk.Frame(self.perf_frame)
         button_frame.pack(fill="x", pady=5)
         
         ttk.Button(
@@ -275,8 +270,7 @@ class ParallelOptimizationControls:
         self.results_frame = ttk.LabelFrame(
             self.main_frame, 
             text="Results", 
-            padding="5",
-            style="WhiteBG.TLabelFrame"
+            padding="5"
         )
         
         self.results_text = tk.Text(self.results_frame, height=8, width=60)

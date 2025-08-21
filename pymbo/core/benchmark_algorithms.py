@@ -12,7 +12,7 @@ Classes:
     MOBOAlgorithm: Wrapper for the main MOBO algorithm
 
 Author: Multi-Objective Optimization Laboratory
-Version: 3.2.0 Enhanced
+Version: 3.6.6 Enhanced
 """
 
 import numpy as np
